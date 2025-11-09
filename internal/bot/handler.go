@@ -134,7 +134,8 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 			// Возвращаемся к предыдущему шагу в зависимости от текущего состояния
 			switch state.CurrentStep {
 			case StateEnterName:
-				b.handlePersonalData(update, state.TempData["item_id"].(int64), state.TempData["date"].(time.Time))
+				b.handleMainMenu(update)
+				// b.handlePersonalData(update, state.TempData["item_id"].(int64), state.TempData["date"].(time.Time))
 			case StatePhoneNumber:
 				b.handleNameRequest(update)
 			case StateConfirmation:

@@ -547,7 +547,8 @@ func (b *Bot) handleDateInput(update tgbotapi.Update, dateStr string, state *mod
 	b.debugState(update.Message.From.ID, "handleDateInput END")
 
 	// Переходим к запросу персональных данных
-	b.handlePersonalData(update, item.ID, date)
+	// b.handlePersonalData(update, item.ID, date)
+	b.handleNameRequest(update)
 }
 
 // restoreStateOrRestart восстанавливает состояние или начинает заново
