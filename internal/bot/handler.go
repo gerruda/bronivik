@@ -122,10 +122,51 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 		b.handleSelectItem(update)
 
 	case text == "📅 7 дней":
-		b.showWeekSchedule(update)
+		// Проверяем, есть ли выбранный аппарат для расписания
+		state := b.getUserState(update.Message.From.ID)
+		if state != nil && state.TempData["selected_item"] != nil {
+			b.showWeekScheduleForItem(update)
+		} else {
+			// Если аппарат не выбран, просим выбрать сначала
+			b.sendMessage(update.Message.Chat.ID, "Сначала выберите аппарат для просмотра расписания")
+			b.handleViewSchedule(update)
+		}
 
 	case text == "🗓 Выбрать дату":
-		b.requestSpecificDate(update)
+		// Проверяем, есть ли выбранный аппарат для расписания
+		state := b.getUserState(update.Message.From.ID)
+		if state != nil && state.TempData["selected_item"] != nil {
+			b.requestSpecificDate(update)
+		} else {
+			b.sendMessage(update.Message.Chat.ID, "Сначала выберите аппарат для просмотра расписания")
+			b.handleViewSchedule(update)
+		}
+
+	case text == "⬅️ Назад к выбору аппарата":
+		b.handleViewSchedule(update)
+
+	case text == "📋 Создать заявку на этот аппарат":
+		state := b.getUserState(update.Message.From.ID)
+		if state != nil && state.TempData["selected_item"] != nil {
+			selectedItem := state.TempData["selected_item"].(models.Item)
+			// Сохраняем выбранный аппарат для создания заявки
+			tempData := map[string]interface{}{
+				"selected_item": selectedItem,
+			}
+			b.setUserState(update.Message.From.ID, StateWaitingDate, tempData)
+
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+				fmt.Sprintf("Вы выбрали: %s\n\nВведите дату бронирования в формате ДД.ММ.ГГГГ (например, 25.12.2024):",
+					selectedItem.Name))
+
+			keyboard := tgbotapi.NewReplyKeyboard(
+				tgbotapi.NewKeyboardButtonRow(
+					tgbotapi.NewKeyboardButton("⬅️ Назад"),
+				),
+			)
+			msg.ReplyMarkup = keyboard
+			b.bot.Send(msg)
+		}
 
 	case text == "⬅️ Назад":
 		if state != nil {
@@ -133,7 +174,6 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 			switch state.CurrentStep {
 			case StateEnterName:
 				b.handleMainMenu(update)
-				// b.handlePersonalData(update, state.TempData["item_id"].(int64), state.TempData["date"].(time.Time))
 			case StatePhoneNumber:
 				b.handleNameRequest(update)
 			case StateConfirmation:
@@ -239,6 +279,22 @@ func (b *Bot) handleCallbackQuery(update tgbotapi.Update) {
 		// Редактируем сообщение с новой страницей
 		b.editItemsPage(update, page)
 
+	case strings.HasPrefix(data, "schedule_select_item:"):
+		b.handleScheduleItemSelection(update)
+
+	case strings.HasPrefix(data, "schedule_items_page:"):
+		pageStr := strings.TrimPrefix(data, "schedule_items_page:")
+		page, err := strconv.Atoi(pageStr)
+		if err != nil {
+			log.Printf("Error parsing page: %v", err)
+			return
+		}
+		b.editScheduleItemsPage(update, page)
+
+	case data == "back_to_main_from_schedule":
+		b.clearUserState(callback.From.ID)
+		b.handleMainMenu(update)
+
 	default:
 		log.Printf("Unknown callback data: %s", callback.Data)
 	}
@@ -261,6 +317,144 @@ func (b *Bot) handleCallbackQuery(update tgbotapi.Update) {
 	}
 
 	// Ответ на callback (убирает "часики" на кнопке)
+	b.bot.Send(tgbotapi.NewCallback(callback.ID, ""))
+}
+
+// handleScheduleItemSelection обработка выбора аппарата для расписания
+func (b *Bot) handleScheduleItemSelection(update tgbotapi.Update) {
+	callback := update.CallbackQuery
+	data := callback.Data
+
+	itemIDStr := strings.TrimPrefix(data, "schedule_select_item:")
+	itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
+	if err != nil {
+		log.Printf("Error parsing item ID: %v", err)
+		return
+	}
+
+	// Находим выбранный аппарат
+	var selectedItem models.Item
+	for _, item := range b.items {
+		if item.ID == itemID {
+			selectedItem = item
+			break
+		}
+	}
+
+	if selectedItem.ID == 0 {
+		b.sendMessage(callback.Message.Chat.ID, "Аппарат не найден")
+		return
+	}
+
+	// Сохраняем выбранный аппарат в состоянии
+	b.setUserState(callback.From.ID, "schedule_view_menu", map[string]interface{}{
+		"selected_item": selectedItem,
+	})
+
+	// Редактируем сообщение, убирая клавиатуру
+	editMsg := tgbotapi.NewEditMessageText(
+		callback.Message.Chat.ID,
+		callback.Message.MessageID,
+		fmt.Sprintf("✅ Вы выбрали: *%s*\n\nТеперь выберите период для просмотра расписания:", selectedItem.Name),
+	)
+	editMsg.ParseMode = "Markdown"
+	b.bot.Send(editMsg)
+
+	// Отправляем меню расписания для выбранного аппарата
+	b.sendScheduleMenu(callback.Message.Chat.ID, callback.From.ID)
+}
+
+// sendScheduleMenu показывает меню расписания для выбранного аппарата
+func (b *Bot) sendScheduleMenu(chatID, userID int64) {
+	state := b.getUserState(userID)
+	if state == nil || state.TempData["selected_item"] == nil {
+		b.sendMessage(chatID, "Ошибка: аппарат не выбран")
+		return
+	}
+
+	selectedItem := state.TempData["selected_item"].(models.Item)
+
+	msg := tgbotapi.NewMessage(chatID,
+		fmt.Sprintf("📅 *Расписание для %s*\n\nВыберите период:", selectedItem.Name))
+
+	keyboard := tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("📅 7 дней"),
+			tgbotapi.NewKeyboardButton("🗓 Выбрать дату"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("⬅️ Назад к выбору аппарата"),
+			tgbotapi.NewKeyboardButton("📋 Создать заявку на этот аппарат"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("⬅️ Назад в меню"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	msg.ParseMode = "Markdown"
+
+	b.bot.Send(msg)
+}
+
+// editScheduleItemsPage редактирует страницу с аппаратами для расписания
+func (b *Bot) editScheduleItemsPage(update tgbotapi.Update, page int) {
+	callback := update.CallbackQuery
+	itemsPerPage := 8
+	startIdx := page * itemsPerPage
+	endIdx := startIdx + itemsPerPage
+	if endIdx > len(b.items) {
+		endIdx = len(b.items)
+	}
+
+	var message strings.Builder
+	message.WriteString("🏢 *Выберите аппарат для просмотра расписания:*\n\n")
+	message.WriteString(fmt.Sprintf("Страница %d из %d\n\n", page+1, (len(b.items)+itemsPerPage-1)/itemsPerPage))
+
+	currentItems := b.items[startIdx:endIdx]
+	for i, item := range currentItems {
+		message.WriteString(fmt.Sprintf("%d. *%s*\n", startIdx+i+1, item.Name))
+		message.WriteString(fmt.Sprintf("   📝 %s\n", item.Description))
+	}
+
+	var keyboard [][]tgbotapi.InlineKeyboardButton
+
+	for i, item := range currentItems {
+		btn := tgbotapi.NewInlineKeyboardButtonData(
+			fmt.Sprintf("%d. %s", startIdx+i+1, item.Name),
+			fmt.Sprintf("schedule_select_item:%d", item.ID),
+		)
+		keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{btn})
+	}
+
+	var navButtons []tgbotapi.InlineKeyboardButton
+
+	if page > 0 {
+		navButtons = append(navButtons, tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", fmt.Sprintf("schedule_items_page:%d", page-1)))
+	}
+
+	if endIdx < len(b.items) {
+		navButtons = append(navButtons, tgbotapi.NewInlineKeyboardButtonData("Вперед ➡️", fmt.Sprintf("schedule_items_page:%d", page+1)))
+	}
+
+	if len(navButtons) > 0 {
+		keyboard = append(keyboard, navButtons)
+	}
+
+	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад в меню", "back_to_main_from_schedule"),
+	})
+
+	markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+
+	editMsg := tgbotapi.NewEditMessageTextAndMarkup(
+		callback.Message.Chat.ID,
+		callback.Message.MessageID,
+		message.String(),
+		markup,
+	)
+	editMsg.ParseMode = "Markdown"
+
+	b.bot.Send(editMsg)
 	b.bot.Send(tgbotapi.NewCallback(callback.ID, ""))
 }
 
