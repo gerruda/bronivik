@@ -239,44 +239,42 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 		},
 	})
 
-	// Объединяем ячейки для заголовка периода - ИСПРАВЛЕННЫЙ КОД
-	// Убедимся, что EndColumnIndex не превышает количество дней + 1 (для названий аппаратов)
+	// Объединяем ячейки для заголовка периода
 	endColumnIndex := int64(days + 1)
-	if endColumnIndex > 26 { // Ограничим максимальное количество колонок
+	if endColumnIndex > 26 {
 		endColumnIndex = 26
 	}
 
-	formatRequests = append(formatRequests, &sheets.Request{
-		MergeCells: &sheets.MergeCellsRequest{
-			Range: &sheets.GridRange{
-				SheetId:          sheetId,
-				StartRowIndex:    0,
-				EndRowIndex:      1,
-				StartColumnIndex: 0,
-				EndColumnIndex:   endColumnIndex,
-			},
-			MergeType: "MERGE_ALL",
-		},
-	})
+	// formatRequests = append(formatRequests, &sheets.Request{
+	// 	MergeCells: &sheets.MergeCellsRequest{
+	// 		Range: &sheets.GridRange{
+	// 			SheetId:          sheetId,
+	// 			StartRowIndex:    0,
+	// 			EndRowIndex:      1,
+	// 			StartColumnIndex: 0,
+	// 			EndColumnIndex:   endColumnIndex,
+	// 		},
+	// 		MergeType: "MERGE_ALL",
+	// 	},
+	// })
 
 	// Пустая строка между заголовком и таблицей
 	data = append(data, []interface{}{})
 
 	// Заголовки дат (строка 3)
 	dateHeaders := make(map[string]int)
-	headerRow := []interface{}{""} // Пустая ячейка для названий аппаратов
+	headerRow := []interface{}{""}
 
 	currentDate := startDate
 	dateCols := 0
-	for !currentDate.After(endDate) && dateCols < 100 { // Ограничим 100 колонками
+	for !currentDate.After(endDate) && dateCols < 100 {
 		dateStr := currentDate.Format("02.01")
 		headerRow = append(headerRow, dateStr)
-		dateHeaders[currentDate.Format("2006-01-02")] = dateCols + 1 // +1 потому что первая колонка для названий
+		dateHeaders[currentDate.Format("2006-01-02")] = dateCols + 1
 		dateCols++
 		currentDate = currentDate.AddDate(0, 0, 1)
 	}
 
-	// Если нет дат в периоде, добавляем хотя бы одну колонку
 	if len(headerRow) <= 1 {
 		headerRow = append(headerRow, "Нет данных")
 		dateCols = 1
@@ -337,8 +335,8 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 			bookedCount := len(activeBookings)
 
 			if len(activeBookings) > 0 {
-				// Есть активные заявки
-				for _, booking := range itemBookings {
+				// Есть активные заявки - используем activeBookings для формирования содержимого
+				for _, booking := range activeBookings {
 					status := "❓"
 					switch booking.Status {
 					case "confirmed", "completed":
@@ -352,6 +350,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 					cellValue += fmt.Sprintf("[№%d] %s %s (%s)\n",
 						booking.ID, status, booking.UserName, booking.Phone)
 
+					// ВАЖНО: Добавляем комментарий если он есть - теперь это работает для всех активных заявок
 					if booking.Comment != "" {
 						cellValue += fmt.Sprintf("   💬 %s\n", booking.Comment)
 					}

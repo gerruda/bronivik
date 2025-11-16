@@ -115,6 +115,7 @@ export BOT_TOKEN=your_token && go run main.go
 4. Обновите `managers_contacts`
 
 При разработке использовать команду для запуска инфраструктуры
+git pull
 docker-compose down
 docker-compose build --no-cache
 docker-compose up
