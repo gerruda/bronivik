@@ -113,3 +113,13 @@ export BOT_TOKEN=your_token && go run main.go
 2. Отключите `telegram.debug`
 3. Настройте SSL для PostgreSQL
 4. Обновите `managers_contacts`
+
+При разработке использовать команду для запуска инфраструктуры
+docker-compose down
+docker-compose build --no-cache
+docker-compose up
+docker logs -f booking-bot
+
+docker-compose -f ./docker/docker-compose.dev.yml up -d
+
+docker-compose -f ./docker/docker-compose.dev.yml --env-file .env up -d

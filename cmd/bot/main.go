@@ -20,7 +20,18 @@ func main() {
 		configPath = "configs/config.yaml"
 	}
 
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		log.Fatalf("Config file does not exist: %s", configPath)
+	}
+
 	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
+	if _, err := os.Stat("configs/items.yaml"); os.IsNotExist(err) {
+		log.Fatalf("Config file does not exist: %s", "configs/items.yaml")
+	}
 
 	// Загрузка позиций из отдельного файла
 	itemsData, err := os.ReadFile("configs/items.yaml")
@@ -36,6 +47,9 @@ func main() {
 	}
 
 	// Создаем необходимые директории
+	if cfg == nil {
+		log.Fatal("Cfg configuration is missing in config")
+	}
 	if err := os.MkdirAll(filepath.Dir(cfg.Database.Path), 0755); err != nil {
 		log.Fatal("Ошибка создания директории для базы данных:", err)
 	}
