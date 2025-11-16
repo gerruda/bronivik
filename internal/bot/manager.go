@@ -424,11 +424,6 @@ func (b *Bot) createManagerBookings(update tgbotapi.Update, state *models.UserSt
 			failedDates = append(failedDates, date.Format("02.01.2006"))
 		} else {
 			createdBookings = append(createdBookings, booking)
-
-			// Синхронизируем с Google Sheets
-			if b.sheetsService != nil {
-				b.sheetsService.AppendBooking(booking)
-			}
 		}
 	}
 
@@ -456,8 +451,15 @@ func (b *Bot) createManagerBookings(update tgbotapi.Update, state *models.UserSt
 	// Очищаем состояние
 	b.clearUserState(update.Message.From.ID)
 
-	// Синхронизируем расписание
-	b.SyncScheduleToSheets()
+	// СИНХРОНИЗИРУЕМ ВСЕ ИЗМЕНЕНИЯ В GOOGLE SHEETS
+	if len(createdBookings) > 0 {
+		// СИНХРОНИЗИРУЕМ ВСЕ ИЗМЕНЕНИЯ
+		go func() {
+			time.Sleep(1 * time.Second) // Небольшая задержка для завершения операции в БД
+			b.SyncBookingsToSheets()
+			b.SyncScheduleToSheets()
+		}()
+	}
 
 	// Возвращаем в главное меню
 	b.handleMainMenu(update)
@@ -636,8 +638,12 @@ func (b *Bot) handleManagerAction(update tgbotapi.Update) {
 		fmt.Sprintf("✅ Заявка #%d обработана\nДействие: %s", bookingID, action))
 	b.bot.Send(editMsg)
 
-	b.SyncBookingsToSheets()
-	b.SyncScheduleToSheets()
+	// СИНХРОНИЗИРУЕМ ВСЕ ИЗМЕНЕНИЯ
+	go func() {
+		time.Sleep(1 * time.Second) // Небольшая задержка для завершения операции в БД
+		b.SyncBookingsToSheets()
+		b.SyncScheduleToSheets()
+	}()
 }
 
 // startChangeItem начало изменения аппарата в заявке
@@ -723,6 +729,10 @@ func (b *Bot) handleChangeItem(update tgbotapi.Update) {
 	b.bot.Send(userMsg)
 
 	b.sendMessage(callback.Message.Chat.ID, "✅ Аппарат успешно изменен")
+
+	// СИНХРОНИЗИРУЕМ ИЗМЕНЕНИЯ В GOOGLE SHEETS
+	b.SyncBookingsToSheets()
+	b.SyncScheduleToSheets()
 
 	// ВМЕСТО ВЫЗОВА showManagerBookingDetail, который требует Message, используем sendManagerBookingDetail
 	updatedBooking, err := b.db.GetBooking(context.Background(), bookingID)
@@ -811,6 +821,10 @@ func (b *Bot) reopenBooking(booking *models.Booking, managerChatID int64) {
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "✅ Заявка возвращена в работу")
 	b.bot.Send(managerMsg)
+
+	// СИНХРОНИЗИРУЕМ ИЗМЕНЕНИЯ В GOOGLE SHEETS
+	b.SyncBookingsToSheets()
+	b.SyncScheduleToSheets()
 }
 
 // completeBooking завершение заявки
@@ -828,6 +842,10 @@ func (b *Bot) completeBooking(booking *models.Booking, managerChatID int64) {
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "✅ Заявка завершена")
 	b.bot.Send(managerMsg)
+
+	// СИНХРОНИЗИРУЕМ ИЗМЕНЕНИЯ В GOOGLE SHEETS
+	b.SyncBookingsToSheets()
+	b.SyncScheduleToSheets()
 }
 
 // SyncScheduleToSheets синхронизирует расписание в формате таблицы с Google Sheets
@@ -905,6 +923,10 @@ func (b *Bot) confirmBooking(booking *models.Booking, managerChatID int64) {
 	// Уведомляем менеджера
 	managerMsg := tgbotapi.NewMessage(managerChatID, "✅ Бронирование подтверждено")
 	b.bot.Send(managerMsg)
+
+	// СИНХРОНИЗИРУЕМ ИЗМЕНЕНИЯ В GOOGLE SHEETS
+	b.SyncBookingsToSheets()
+	b.SyncScheduleToSheets()
 }
 
 // rejectBooking отклонение бронирования менеджером
@@ -922,6 +944,10 @@ func (b *Bot) rejectBooking(booking *models.Booking, managerChatID int64) {
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "❌ Бронирование отменено")
 	b.bot.Send(managerMsg)
+
+	// СИНХРОНИЗИРУЕМ ИЗМЕНЕНИЯ В GOOGLE SHEETS
+	b.SyncBookingsToSheets()
+	b.SyncScheduleToSheets()
 }
 
 // rescheduleBooking предложение выбрать другую дату
@@ -948,6 +974,10 @@ func (b *Bot) rescheduleBooking(booking *models.Booking, managerChatID int64) {
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "🔄 Пользователю предложено выбрать другую дату")
 	b.bot.Send(managerMsg)
+
+	// СИНХРОНИЗИРУЕМ ИЗМЕНЕНИЯ В GOOGLE SHEETS
+	b.SyncBookingsToSheets()
+	b.SyncScheduleToSheets()
 }
 
 // notifyManagers уведомление менеджеров о новой заявке

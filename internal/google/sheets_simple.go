@@ -214,7 +214,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 	formatRequests = append(formatRequests, &sheets.Request{
 		RepeatCell: &sheets.RepeatCellRequest{
 			Range: &sheets.GridRange{
-				SheetId:          sheetId, // ИСПРАВЛЕНО: используем правильный sheetId
+				SheetId:          sheetId,
 				StartRowIndex:    0,
 				EndRowIndex:      1,
 				StartColumnIndex: 0,
@@ -238,7 +238,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 	formatRequests = append(formatRequests, &sheets.Request{
 		MergeCells: &sheets.MergeCellsRequest{
 			Range: &sheets.GridRange{
-				SheetId:          sheetId, // ИСПРАВЛЕНО
+				SheetId:          sheetId,
 				StartRowIndex:    0,
 				EndRowIndex:      1,
 				StartColumnIndex: 0,
@@ -271,7 +271,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 		formatRequests = append(formatRequests, &sheets.Request{
 			RepeatCell: &sheets.RepeatCellRequest{
 				Range: &sheets.GridRange{
-					SheetId:          sheetId, // ИСПРАВЛЕНО
+					SheetId:          sheetId,
 					StartRowIndex:    2,
 					EndRowIndex:      3,
 					StartColumnIndex: 1,
@@ -313,59 +313,84 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 
 			cellValue := ""
 			var backgroundColor *sheets.Color
-			var hasUnconfirmed bool
 
-			if len(itemBookings) > 0 {
+			// Фильтруем активные заявки (исключаем отмененные)
+			activeBookings := s.filterActiveBookings(itemBookings)
+			bookedCount := len(activeBookings)
+
+			if len(activeBookings) > 0 {
+				// Есть активные заявки
 				for _, booking := range itemBookings {
 					status := "❓"
-					if booking.Status == "confirmed" {
+					switch booking.Status {
+					case "confirmed", "completed":
 						status = "✅"
-					} else if booking.Status == "pending" || booking.Status == "changed" {
+					case "pending", "changed":
 						status = "⏳"
-						hasUnconfirmed = true
+					case "cancelled":
+						status = "❌"
 					}
 
 					cellValue += fmt.Sprintf("[№%d] %s %s (%s)\n",
 						booking.ID, status, booking.UserName, booking.Phone)
+
+					// Добавляем комментарий если есть
+					if booking.Comment != "" {
+						cellValue += fmt.Sprintf("   💬 %s\n", booking.Comment)
+					}
 				}
 
-				bookedCount := len(itemBookings)
 				cellValue += fmt.Sprintf("\nЗанято: %d/%d", bookedCount, item.TotalQuantity)
 
-				// ОПРЕДЕЛЯЕМ ЦВЕТ
-				if hasUnconfirmed {
-					// Желтый - есть неподтвержденные заявки
+				// НОВАЯ ЛОГИКА ПОДСВЕТКИ:
+				// 1. Если все аппараты заняты - КРАСНЫЙ
+				if bookedCount >= int(item.TotalQuantity) {
 					backgroundColor = &sheets.Color{
-						Red:   1.0,
-						Green: 0.92,
-						Blue:  0.61,
+						Red:   1.0, // #FFC7CE
+						Green: 0.78,
+						Blue:  0.81,
 					}
 				} else {
-					// Зеленый - все заявки подтверждены
-					backgroundColor = &sheets.Color{
-						Red:   0.78,
-						Green: 0.94,
-						Blue:  0.81,
+					// Проверяем статусы заявок
+					hasUnconfirmed := false
+					for _, booking := range activeBookings {
+						if booking.Status == "pending" || booking.Status == "changed" {
+							hasUnconfirmed = true
+							break
+						}
+					}
+
+					// 2. Если есть неподтвержденные заявки - ЖЕЛТЫЙ
+					if hasUnconfirmed {
+						backgroundColor = &sheets.Color{
+							Red:   1.0, // #FFEB9C
+							Green: 0.92,
+							Blue:  0.61,
+						}
+					} else {
+						// 3. Если все заявки подтверждены - ЗЕЛЕНЫЙ
+						backgroundColor = &sheets.Color{
+							Red:   0.78, // #C6EFCE
+							Green: 0.94,
+							Blue:  0.81,
+						}
 					}
 				}
 			} else {
-				// Нет заявок - свободно (зеленый)
+				// Нет активных заявок - СВОБОДНО (БЕЗ ЗАЛИВКИ)
 				cellValue = "Свободно\n\nДоступно: " + fmt.Sprintf("%d/%d", item.TotalQuantity, item.TotalQuantity)
-				backgroundColor = &sheets.Color{
-					Red:   0.78,
-					Green: 0.94,
-					Blue:  0.81,
-				}
+				// ЯВНО УСТАНАВЛИВАЕМ backgroundColor В NIL ДЛЯ ОТСУТСТВИЯ ЗАЛИВКИ
+				backgroundColor = nil
 			}
 
 			rowData = append(rowData, cellValue)
 
-			// Добавляем запрос на форматирование для этой ячейки
+			// Добавляем запрос на форматирование только если нужна заливка
 			if backgroundColor != nil {
 				formatRequests = append(formatRequests, &sheets.Request{
 					RepeatCell: &sheets.RepeatCellRequest{
 						Range: &sheets.GridRange{
-							SheetId:          sheetId, // ИСПРАВЛЕНО
+							SheetId:          sheetId,
 							StartRowIndex:    int64(rowIndex + 3),
 							EndRowIndex:      int64(rowIndex + 4),
 							StartColumnIndex: int64(colIndex + 1),
@@ -374,6 +399,31 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 						Cell: &sheets.CellData{
 							UserEnteredFormat: &sheets.CellFormat{
 								BackgroundColor:   backgroundColor,
+								VerticalAlignment: "TOP",
+								WrapStrategy:      "WRAP",
+							},
+						},
+						Fields: "userEnteredFormat(backgroundColor,verticalAlignment,wrapStrategy)",
+					},
+				})
+			} else {
+				// ДЛЯ ЯЧЕЕК БЕЗ ЗАЛИВКИ ЯВНО УСТАНАВЛИВАЕМ БЕЛЫЙ ЦВЕТ
+				formatRequests = append(formatRequests, &sheets.Request{
+					RepeatCell: &sheets.RepeatCellRequest{
+						Range: &sheets.GridRange{
+							SheetId:          sheetId,
+							StartRowIndex:    int64(rowIndex + 3),
+							EndRowIndex:      int64(rowIndex + 4),
+							StartColumnIndex: int64(colIndex + 1),
+							EndColumnIndex:   int64(colIndex + 2),
+						},
+						Cell: &sheets.CellData{
+							UserEnteredFormat: &sheets.CellFormat{
+								BackgroundColor: &sheets.Color{
+									Red:   1.0, // Белый цвет
+									Green: 1.0,
+									Blue:  1.0,
+								},
 								VerticalAlignment: "TOP",
 								WrapStrategy:      "WRAP",
 							},
@@ -393,7 +443,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 		formatRequests = append(formatRequests, &sheets.Request{
 			RepeatCell: &sheets.RepeatCellRequest{
 				Range: &sheets.GridRange{
-					SheetId:          sheetId, // ИСПРАВЛЕНО
+					SheetId:          sheetId,
 					StartRowIndex:    3,
 					EndRowIndex:      int64(3 + len(items)),
 					StartColumnIndex: 0,
@@ -444,6 +494,17 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 
 	// Настраиваем ширину колонок
 	return s.adjustColumnWidths(sheetId, len(dateHeaders))
+}
+
+// filterActiveBookings фильтрует активные заявки (исключает отмененные)
+func (s *SheetsService) filterActiveBookings(bookings []models.Booking) []models.Booking {
+	var active []models.Booking
+	for _, booking := range bookings {
+		if booking.Status != "cancelled" {
+			active = append(active, booking)
+		}
+	}
+	return active
 }
 
 // adjustColumnWidths настраивает ширину колонок
@@ -510,4 +571,47 @@ func (s *SheetsService) GetSheetIdByName(spreadID, sheetName string) (int64, err
 	}
 
 	return 0, fmt.Errorf("sheet '%s' not found", sheetName)
+}
+
+// ReplaceBookingsSheet полностью перезаписывает лист с заявками
+func (s *SheetsService) ReplaceBookingsSheet(bookings []*models.Booking) error {
+	// Очищаем весь лист (кроме заголовков)
+	clearRange := "Bookings!A2:Z" // Предполагая, что заголовки в строке 1
+	clearReq := &sheets.ClearValuesRequest{}
+
+	_, err := s.service.Spreadsheets.Values.Clear(s.bookingsSheetID, clearRange, clearReq).Do()
+	if err != nil {
+		return fmt.Errorf("failed to clear bookings sheet: %v", err)
+	}
+
+	// Подготавливаем данные для записи
+	var values [][]interface{}
+	for _, booking := range bookings {
+		row := []interface{}{
+			booking.ID,
+			booking.UserID,
+			booking.UserName,
+			booking.Phone,
+			booking.ItemName,
+			booking.Date.Format("02.01.2006"),
+			booking.Status,
+			booking.Comment,
+			booking.CreatedAt.Format("02.01.2006 15:04"),
+			booking.UpdatedAt.Format("02.01.2006 15:04"),
+		}
+		values = append(values, row)
+	}
+
+	// Записываем все данные
+	valueRange := &sheets.ValueRange{
+		Values: values,
+	}
+
+	_, err = s.service.Spreadsheets.Values.Update(s.bookingsSheetID, "Bookings!A2", valueRange).
+		ValueInputOption("RAW").Do()
+	if err != nil {
+		return fmt.Errorf("failed to update bookings sheet: %v", err)
+	}
+
+	return nil
 }

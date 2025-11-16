@@ -327,6 +327,12 @@ func (b *Bot) finalizeBooking(update tgbotapi.Update) {
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 		fmt.Sprintf("✅ Ваша заявка #%d успешно создана! Менеджер свяжется с вами для подтверждения.", booking.ID))
 
+	go func() {
+		time.Sleep(1 * time.Second) // Небольшая задержка для завершения операции в БД
+		b.SyncBookingsToSheets()
+		b.SyncScheduleToSheets()
+	}()
+
 	// Очищаем состояние
 	b.clearUserState(update.Message.From.ID)
 	b.handleMainMenu(update)

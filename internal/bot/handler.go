@@ -814,39 +814,51 @@ func (b *Bot) SyncUsersToSheets() {
 // SyncBookingsToSheets синхронизирует бронирования с Google Sheets
 func (b *Bot) SyncBookingsToSheets() {
 	if b.sheetsService == nil {
+		log.Println("Google Sheets service not initialized")
 		return
 	}
 
-	// Вам нужно будет создать этот метод в database
-	bookings, err := b.db.GetBookingsByDateRange(context.Background(), time.Now().AddDate(0, 0, -14), time.Now()) // Последние 2 недели
+	// Получаем ВСЕ бронирования для полной синхронизации
+	startDate := time.Now().AddDate(0, -1, 0) // За последний месяц
+	endDate := time.Now().AddDate(0, 2, 0)    // +2 месяца вперед
+
+	bookings, err := b.db.GetBookingsByDateRange(context.Background(), startDate, endDate)
 	if err != nil {
 		log.Printf("Failed to get bookings for Google Sheets sync: %v", err)
 		return
 	}
 
-	// Конвертируем в google.Booking
+	log.Printf("Syncing %d bookings to Google Sheets", len(bookings))
+
+	// Конвертируем в модели для Google Sheets
 	var googleBookings []*models.Booking
 	for _, booking := range bookings {
 		googleBookings = append(googleBookings, &models.Booking{
-			ID:        booking.ID,
-			UserID:    booking.UserID,
-			ItemID:    booking.ItemID,
-			Date:      booking.Date,
-			Status:    booking.Status,
-			UserName:  booking.UserName,
-			Phone:     booking.Phone,
-			ItemName:  booking.ItemName,
-			CreatedAt: booking.CreatedAt,
-			UpdatedAt: booking.UpdatedAt,
+			ID:           booking.ID,
+			UserID:       booking.UserID,
+			ItemID:       booking.ItemID,
+			Date:         booking.Date,
+			Status:       booking.Status,
+			UserName:     booking.UserName,
+			Phone:        booking.Phone,
+			ItemName:     booking.ItemName,
+			Comment:      booking.Comment,
+			UserNickname: booking.UserNickname,
+			CreatedAt:    booking.CreatedAt,
+			UpdatedAt:    booking.UpdatedAt,
 		})
 	}
 
-	err = b.sheetsService.UpdateBookingsSheet(googleBookings)
+	// Полностью перезаписываем лист с заявками
+	err = b.sheetsService.ReplaceBookingsSheet(googleBookings)
 	if err != nil {
 		log.Printf("Failed to sync bookings to Google Sheets: %v", err)
 	} else {
-		log.Println("Bookings successfully synced to Google Sheets")
+		log.Printf("Bookings successfully synced to Google Sheets: %d records", len(googleBookings))
 	}
+
+	// Также синхронизируем расписание
+	b.SyncScheduleToSheets()
 }
 
 // AppendBookingToSheets добавляет одно бронирование в Google Sheets

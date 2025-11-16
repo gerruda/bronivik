@@ -13,6 +13,7 @@ import (
 )
 
 // exportToExcel создает Excel файл с данными о бронированиях
+// exportToExcel создает Excel файл с данными о бронированиях
 func (b *Bot) exportToExcel(startDate, endDate time.Time) (string, error) {
 	// Создаем папку для экспорта, если не существует
 	if err := os.MkdirAll(b.config.Exports.Path, 0755); err != nil {
@@ -42,44 +43,39 @@ func (b *Bot) exportToExcel(startDate, endDate time.Time) (string, error) {
 		startDate.Format("02.01.2006"), endDate.Format("02.01.2006")))
 
 	// Заголовки - даты (начинаем с строки 2)
-	col := 2 // Начинаем с колонки B
+	col := 2
 	currentDate := startDate
-	dateHeaders := make(map[string]int) // для быстрого доступа к колонкам по дате
+	dateHeaders := make(map[string]int)
 
 	for !currentDate.After(endDate) {
-		cell, _ := excelize.CoordinatesToCellName(col, 2) // строка 2 для заголовков дат
+		cell, _ := excelize.CoordinatesToCellName(col, 2)
 		dateStr := currentDate.Format("02.01")
 		f.SetCellValue("Бронирования", cell, dateStr)
 		dateHeaders[currentDate.Format("2006-01-02")] = col
 
 		// Форматируем заголовки дат
-		style, err := f.NewStyle(&excelize.Style{
+		style, _ := f.NewStyle(&excelize.Style{
 			Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DDEBF7"}, Pattern: 1},
 			Font:      &excelize.Font{Bold: true},
 			Alignment: &excelize.Alignment{Horizontal: "center"},
 		})
-		if err == nil {
-			f.SetCellStyle("Бронирования", cell, cell, style)
-		}
+		f.SetCellStyle("Бронирования", cell, cell, style)
 
 		col++
 		currentDate = currentDate.AddDate(0, 0, 1)
 	}
 
-	// Названия аппаратов в первом столбце (начинаем с строки 3)
+	// Названия аппаратов в первом столбце
 	row := 3
 	for _, item := range items {
 		cell, _ := excelize.CoordinatesToCellName(1, row)
 		f.SetCellValue("Бронирования", cell, fmt.Sprintf("%s (%d)", item.Name, item.TotalQuantity))
 
-		// Форматируем названия аппаратов
-		style, err := f.NewStyle(&excelize.Style{
+		style, _ := f.NewStyle(&excelize.Style{
 			Fill: excelize.Fill{Type: "pattern", Color: []string{"#E2EFDA"}, Pattern: 1},
 			Font: &excelize.Font{Bold: true},
 		})
-		if err == nil {
-			f.SetCellStyle("Бронирования", cell, cell, style)
-		}
+		f.SetCellStyle("Бронирования", cell, cell, style)
 
 		row++
 	}
@@ -101,19 +97,10 @@ func (b *Bot) exportToExcel(startDate, endDate time.Time) (string, error) {
 		row := 3
 		for _, item := range items {
 			cell, _ := excelize.CoordinatesToCellName(col, row)
-
 			itemBookings := bookingsByItem[item.ID]
-			date, _ := time.Parse("2006-01-02", dateKey)
 
-			// Проверяем доступность аппарата на эту дату
-			available, err := b.db.CheckAvailability(context.Background(), item.ID, date)
-			if err != nil {
-				log.Printf("Error checking availability for export: %v", err)
-				available = false
-			}
-
-			// Получаем количество занятых аппаратов
-			bookedCount, err := b.db.GetBookedCount(context.Background(), item.ID, date)
+			// Получаем количество занятых аппаратов (только активные заявки)
+			bookedCount, err := b.db.GetBookedCount(context.Background(), item.ID, parseDate(dateKey))
 			if err != nil {
 				log.Printf("Error getting booked count: %v", err)
 				bookedCount = 0
@@ -121,50 +108,32 @@ func (b *Bot) exportToExcel(startDate, endDate time.Time) (string, error) {
 
 			if len(itemBookings) > 0 {
 				var cellValue string
-				var hasUnconfirmed bool
-
 				for _, booking := range itemBookings {
 					status := "❓"
-					if booking.Status == "confirmed" {
+					switch booking.Status {
+					case "confirmed", "completed":
 						status = "✅"
-					} else if booking.Status == "pending" || booking.Status == "changed" {
+					case "pending", "changed":
 						status = "⏳"
-						hasUnconfirmed = true
+					case "cancelled":
+						status = "❌"
 					}
-
 					cellValue += fmt.Sprintf("%s %s (%s)\n", status, booking.UserName, booking.Phone)
+					if booking.Comment != "" {
+						cellValue += fmt.Sprintf("   💬 %s\n", booking.Comment)
+					}
 				}
-
-				// Добавляем информацию о доступности
 				cellValue += fmt.Sprintf("\nЗанято: %d/%d", bookedCount, item.TotalQuantity)
-
 				f.SetCellValue("Бронирования", cell, cellValue)
-
-				// ОПРЕДЕЛЯЕМ ЦВЕТ ПО НОВЫМ ПРАВИЛАМ:
-				// Красный - если аппарат полностью занят (не доступен)
-				// Желтый - если есть хотя бы одна неподтвержденная заявка
-				// Зеленый - если есть свободные аппараты и все заявки подтверждены
-				styleID, err := b.getCellStyleByAvailability(f, available, hasUnconfirmed, bookedCount, int(item.TotalQuantity))
-				if err == nil {
-					f.SetCellStyle("Бронирования", cell, cell, styleID)
-				}
 			} else {
-				// Нет заявок - свободно
 				cellValue := fmt.Sprintf("Свободно\n\nДоступно: %d/%d", item.TotalQuantity, item.TotalQuantity)
 				f.SetCellValue("Бронирования", cell, cellValue)
+			}
 
-				// Зеленый для свободных ячеек
-				style, err := f.NewStyle(&excelize.Style{
-					Fill: excelize.Fill{Type: "pattern", Color: []string{"#C6EFCE"}, Pattern: 1},
-					Alignment: &excelize.Alignment{
-						Horizontal: "left",
-						Vertical:   "top",
-						WrapText:   true,
-					},
-				})
-				if err == nil {
-					f.SetCellStyle("Бронирования", cell, cell, style)
-				}
+			// Определяем цвет заливки
+			styleID, err := b.getCellStyle(f, itemBookings, bookedCount, int(item.TotalQuantity))
+			if err == nil {
+				f.SetCellStyle("Бронирования", cell, cell, styleID)
 			}
 
 			row++
@@ -172,7 +141,7 @@ func (b *Bot) exportToExcel(startDate, endDate time.Time) (string, error) {
 	}
 
 	// Настраиваем ширину колонок
-	f.SetColWidth("Бронирования", "A", "A", 25) // Названия аппаратов
+	f.SetColWidth("Бронирования", "A", "A", 25)
 	for i := 'B'; i < 'Z'; i++ {
 		f.SetColWidth("Бронирования", string(i), string(i), 20)
 	}
@@ -182,15 +151,13 @@ func (b *Bot) exportToExcel(startDate, endDate time.Time) (string, error) {
 	f.MergeCell("Бронирования", "A1", lastCol+"1")
 
 	// Стиль для заголовка периода
-	style, err := f.NewStyle(&excelize.Style{
+	style, _ := f.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true, Size: 14},
 		Alignment: &excelize.Alignment{Horizontal: "center"},
 	})
-	if err == nil {
-		f.SetCellStyle("Бронирования", "A1", "A1", style)
-	}
+	f.SetCellStyle("Бронирования", "A1", "A1", style)
 
-	// Удаляем стандартный лист "Sheet1"
+	// Удаляем стандартный лист
 	f.DeleteSheet("Sheet1")
 
 	// Сохраняем файл
@@ -207,34 +174,89 @@ func (b *Bot) exportToExcel(startDate, endDate time.Time) (string, error) {
 	return filePath, nil
 }
 
-// getCellStyleByAvailability возвращает стиль ячейки на основе доступности и статусов заявок
-func (b *Bot) getCellStyleByAvailability(f *excelize.File, available bool, hasUnconfirmed bool, bookedCount int, totalQuantity int) (int, error) {
-	var fillColor string
+// parseDate преобразует строку в time.Time
+func parseDate(dateStr string) time.Time {
+	date, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return time.Now()
+	}
+	return date
+}
 
-	// НОВАЯ ЛОГИКА ЦВЕТОВ:
-	// 1. Красный - если аппарат полностью занят (не доступен)
-	if !available {
-		fillColor = "#FFC7CE" // Красный
-	} else if hasUnconfirmed { // 2. Желтый - если есть хотя бы одна неподтвержденная заявка
-		fillColor = "#FFEB9C" // Желтый
-	} else { // 3. Зеленый - если есть свободные аппараты и все заявки подтверждены
-		fillColor = "#C6EFCE" // Зеленый
+// getCellStyle возвращает стиль ячейки
+func (b *Bot) getCellStyle(f *excelize.File, itemBookings []models.Booking, bookedCount int, totalQuantity int) (int, error) {
+	// Фильтруем активные заявки (исключаем отмененные)
+	activeBookings := b.filterActiveBookings(itemBookings)
+
+	// 1. Если нет активных заявок - БЕЗ ЗАЛИВКИ
+	if len(activeBookings) == 0 {
+		style, err := f.NewStyle(&excelize.Style{
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#FFFFFF"}, Pattern: 1},
+			Alignment: &excelize.Alignment{
+				Horizontal: "left",
+				Vertical:   "top",
+				WrapText:   true,
+			},
+		})
+		return style, err
 	}
 
+	// 2. Если все аппараты заняты - КРАСНЫЙ
+	if bookedCount >= totalQuantity {
+		style, err := f.NewStyle(&excelize.Style{
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#FFC7CE"}, Pattern: 1},
+			Alignment: &excelize.Alignment{
+				Horizontal: "left",
+				Vertical:   "top",
+				WrapText:   true,
+			},
+		})
+		return style, err
+	}
+
+	// 3. Проверяем статусы активных заявок
+	hasUnconfirmed := false
+	for _, booking := range activeBookings {
+		if booking.Status == "pending" || booking.Status == "changed" {
+			hasUnconfirmed = true
+			break
+		}
+	}
+
+	// 4. Если есть неподтвержденные заявки - ЖЕЛТЫЙ
+	if hasUnconfirmed {
+		style, err := f.NewStyle(&excelize.Style{
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#FFEB9C"}, Pattern: 1},
+			Alignment: &excelize.Alignment{
+				Horizontal: "left",
+				Vertical:   "top",
+				WrapText:   true,
+			},
+		})
+		return style, err
+	}
+
+	// 5. Если все заявки подтверждены - ЗЕЛЕНЫЙ
 	style, err := f.NewStyle(&excelize.Style{
-		Fill: excelize.Fill{Type: "pattern", Color: []string{fillColor}, Pattern: 1},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#C6EFCE"}, Pattern: 1},
 		Alignment: &excelize.Alignment{
 			Horizontal: "left",
 			Vertical:   "top",
 			WrapText:   true,
 		},
 	})
-	if err != nil {
-		log.Printf("Error creating cell style: %v", err)
-		return 0, err
-	}
+	return style, err
+}
 
-	return style, nil
+// filterActiveBookings фильтрует активные заявки
+func (b *Bot) filterActiveBookings(bookings []models.Booking) []models.Booking {
+	var active []models.Booking
+	for _, booking := range bookings {
+		if booking.Status != "cancelled" {
+			active = append(active, booking)
+		}
+	}
+	return active
 }
 
 // getLastColumn возвращает последнюю колонку для объединения ячеек
