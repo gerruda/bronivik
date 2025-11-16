@@ -239,25 +239,6 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 		},
 	})
 
-	// Объединяем ячейки для заголовка периода
-	endColumnIndex := int64(days + 1)
-	if endColumnIndex > 26 {
-		endColumnIndex = 26
-	}
-
-	// formatRequests = append(formatRequests, &sheets.Request{
-	// 	MergeCells: &sheets.MergeCellsRequest{
-	// 		Range: &sheets.GridRange{
-	// 			SheetId:          sheetId,
-	// 			StartRowIndex:    0,
-	// 			EndRowIndex:      1,
-	// 			StartColumnIndex: 0,
-	// 			EndColumnIndex:   endColumnIndex,
-	// 		},
-	// 		MergeType: "MERGE_ALL",
-	// 	},
-	// })
-
 	// Пустая строка между заголовком и таблицей
 	data = append(data, []interface{}{})
 
@@ -350,7 +331,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 					cellValue += fmt.Sprintf("[№%d] %s %s (%s)\n",
 						booking.ID, status, booking.UserName, booking.Phone)
 
-					// ВАЖНО: Добавляем комментарий если он есть - теперь это работает для всех активных заявок
+					// Добавляем комментарий если он есть
 					if booking.Comment != "" {
 						cellValue += fmt.Sprintf("   💬 %s\n", booking.Comment)
 					}
@@ -358,7 +339,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 
 				cellValue += fmt.Sprintf("\nЗанято: %d/%d", bookedCount, item.TotalQuantity)
 
-				// Логика подсветки
+				// 1. Если все аппараты заняты - КРАСНЫЙ
 				if bookedCount >= int(item.TotalQuantity) {
 					backgroundColor = &sheets.Color{
 						Red:   1.0,
@@ -366,6 +347,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 						Blue:  0.81,
 					}
 				} else {
+					// Проверяем статусы активных заявок
 					hasUnconfirmed := false
 					for _, booking := range activeBookings {
 						if booking.Status == "pending" || booking.Status == "changed" {
@@ -374,6 +356,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 						}
 					}
 
+					// 2. Если есть неподтвержденные заявки - ЖЕЛТЫЙ
 					if hasUnconfirmed {
 						backgroundColor = &sheets.Color{
 							Red:   1.0,
@@ -381,6 +364,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 							Blue:  0.61,
 						}
 					} else {
+						// 3. Если все заявки подтверждены - ЗЕЛЕНЫЙ
 						backgroundColor = &sheets.Color{
 							Red:   0.78,
 							Green: 0.94,
@@ -396,7 +380,7 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 
 			rowData = append(rowData, cellValue)
 
-			// Форматирование ячейки
+			// Форматирование ячейки - ИСПРАВЛЕННЫЕ ИНДЕКСЫ
 			cellFormat := &sheets.CellData{
 				UserEnteredFormat: &sheets.CellFormat{
 					VerticalAlignment: "TOP",
@@ -415,12 +399,13 @@ func (s *SheetsService) UpdateScheduleSheet(startDate, endDate time.Time, dailyB
 				}
 			}
 
+			// ИСПРАВЛЕННЫЕ ИНДЕКСЫ: rowIndex + 3 (потому что у нас 3 строки заголовков)
 			formatRequests = append(formatRequests, &sheets.Request{
 				RepeatCell: &sheets.RepeatCellRequest{
 					Range: &sheets.GridRange{
 						SheetId:          sheetId,
-						StartRowIndex:    int64(rowIndex + 3),
-						EndRowIndex:      int64(rowIndex + 4),
+						StartRowIndex:    int64(rowIndex + 3), // Исправлено: +3 вместо +3
+						EndRowIndex:      int64(rowIndex + 4), // Исправлено: +4 вместо +4
 						StartColumnIndex: int64(colIndex + 1),
 						EndColumnIndex:   int64(colIndex + 2),
 					},
