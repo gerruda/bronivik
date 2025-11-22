@@ -81,6 +81,64 @@ func (b *Bot) handleManagerCommand(update tgbotapi.Update) bool {
 	return false
 }
 
+// handleManagerAction обработка действий менеджера с заявками
+func (b *Bot) handleManagerAction(update tgbotapi.Update) {
+	callback := update.CallbackQuery
+	if callback == nil {
+		return
+	}
+
+	data := callback.Data
+	var bookingID int64
+	var action string
+
+	// Обрабатываем все возможные действия
+	actions := []string{"confirm_", "reject_", "reschedule_", "change_item_", "reopen_", "complete_"}
+	for _, act := range actions {
+		if _, err := fmt.Sscanf(data, act+"%d", &bookingID); err == nil {
+			action = act
+			break
+		}
+	}
+
+	if action == "" {
+		return
+	}
+
+	booking, err := b.db.GetBooking(context.Background(), bookingID)
+	if err != nil {
+		log.Printf("Error getting booking: %v", err)
+		return
+	}
+
+	switch action {
+	case "confirm_":
+		b.confirmBooking(booking, callback.Message.Chat.ID)
+	case "reject_":
+		b.rejectBooking(booking, callback.Message.Chat.ID)
+	case "reschedule_":
+		b.rescheduleBooking(booking, callback.Message.Chat.ID)
+	case "change_item_":
+		b.startChangeItem(booking, callback.Message.Chat.ID)
+	case "reopen_":
+		b.reopenBooking(booking, callback.Message.Chat.ID)
+	case "complete_":
+		b.completeBooking(booking, callback.Message.Chat.ID)
+	}
+
+	// Обновляем сообщение у менеджера
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID,
+		fmt.Sprintf("✅ Заявка #%d обработана\nДействие: %s", bookingID, action))
+	b.bot.Send(editMsg)
+
+	// СИНХРОНИЗИРУЕМ ВСЕ ИЗМЕНЕНИЯ
+	go func() {
+		time.Sleep(1 * time.Second) // Небольшая задержка для завершения операции в БД
+		b.SyncBookingsToSheets()
+		b.SyncScheduleToSheets()
+	}()
+}
+
 // startManagerBooking начало создания заявки менеджером
 func (b *Bot) startManagerBooking(update tgbotapi.Update) {
 	if !b.isManager(update.Message.From.ID) {
@@ -587,64 +645,6 @@ func (b *Bot) showManagerBookingDetail(update tgbotapi.Update, bookingID int64) 
 	b.bot.Send(msg)
 }
 
-// handleManagerAction обработка действий менеджера с заявками
-func (b *Bot) handleManagerAction(update tgbotapi.Update) {
-	callback := update.CallbackQuery
-	if callback == nil {
-		return
-	}
-
-	data := callback.Data
-	var bookingID int64
-	var action string
-
-	// Обрабатываем все возможные действия
-	actions := []string{"confirm_", "reject_", "reschedule_", "change_item_", "reopen_", "complete_"}
-	for _, act := range actions {
-		if _, err := fmt.Sscanf(data, act+"%d", &bookingID); err == nil {
-			action = act
-			break
-		}
-	}
-
-	if action == "" {
-		return
-	}
-
-	booking, err := b.db.GetBooking(context.Background(), bookingID)
-	if err != nil {
-		log.Printf("Error getting booking: %v", err)
-		return
-	}
-
-	switch action {
-	case "confirm_":
-		b.confirmBooking(booking, callback.Message.Chat.ID)
-	case "reject_":
-		b.rejectBooking(booking, callback.Message.Chat.ID)
-	case "reschedule_":
-		b.rescheduleBooking(booking, callback.Message.Chat.ID)
-	case "change_item_":
-		b.startChangeItem(booking, callback.Message.Chat.ID)
-	case "reopen_":
-		b.reopenBooking(booking, callback.Message.Chat.ID)
-	case "complete_":
-		b.completeBooking(booking, callback.Message.Chat.ID)
-	}
-
-	// Обновляем сообщение у менеджера
-	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID,
-		fmt.Sprintf("✅ Заявка #%d обработана\nДействие: %s", bookingID, action))
-	b.bot.Send(editMsg)
-
-	// СИНХРОНИЗИРУЕМ ВСЕ ИЗМЕНЕНИЯ
-	go func() {
-		time.Sleep(1 * time.Second) // Небольшая задержка для завершения операции в БД
-		b.SyncBookingsToSheets()
-		b.SyncScheduleToSheets()
-	}()
-}
-
 // startChangeItem начало изменения аппарата в заявке
 func (b *Bot) startChangeItem(booking *models.Booking, managerChatID int64) {
 	msg := tgbotapi.NewMessage(managerChatID,
@@ -1130,7 +1130,6 @@ func (b *Bot) handleCallButton(update tgbotapi.Update) {
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonURL("✉️ SMS", fmt.Sprintf("sms:%s", phone)),
-			tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", "back_to_booking_details"),
 		),
 	)
 	msg.ReplyMarkup = &keyboard
