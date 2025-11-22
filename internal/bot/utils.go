@@ -818,17 +818,18 @@ func (b *Bot) handlePhoneReceived(update tgbotapi.Update, phone string) {
 			update.Message.From.FirstName+" "+update.Message.From.LastName,
 			normalizedPhone))
 
-	keyboard := tgbotapi.NewReplyKeyboard(
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("✅ Подтвердить заявку"),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("❌ Отмена"),
-		),
-	)
-	msg.ReplyMarkup = keyboard
+	// keyboard := tgbotapi.NewReplyKeyboard(
+	// 	tgbotapi.NewKeyboardButtonRow(
+	// 		tgbotapi.NewKeyboardButton("✅ Подтвердить заявку"),
+	// 	),
+	// 	tgbotapi.NewKeyboardButtonRow(
+	// 		tgbotapi.NewKeyboardButton("❌ Отмена"),
+	// 	),
+	// )
+	// msg.ReplyMarkup = keyboard
 
 	b.bot.Send(msg)
+	b.finalizeBooking(update)
 }
 
 // normalizePhone нормализует номер телефона
