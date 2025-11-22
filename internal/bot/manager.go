@@ -634,7 +634,7 @@ func (b *Bot) showManagerBookingDetail(update tgbotapi.Update, bookingID int64) 
 		tgbotapi.NewInlineKeyboardButtonData("🔄 Предложить выбрать другую дату", fmt.Sprintf("reschedule_%d", booking.ID)),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("📞 Позвонить", fmt.Sprintf("tel:%s", booking.Phone)),
+		tgbotapi.NewInlineKeyboardButtonData("📞 Позвонить", fmt.Sprintf("call_booking:%d", booking.ID)),
 	))
 
 	if len(rows) > 0 {
@@ -797,7 +797,7 @@ func (b *Bot) sendManagerBookingDetail(chatID int64, booking *models.Booking) {
 		tgbotapi.NewInlineKeyboardButtonData("🔄 Предложить выбрать другую дату", fmt.Sprintf("reschedule_%d", booking.ID)),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("📞 Позвонить", fmt.Sprintf("tel:%s", booking.Phone)),
+		tgbotapi.NewInlineKeyboardButtonData("📞 Позвонить", fmt.Sprintf("call_booking:%d", booking.ID)),
 	))
 
 	if len(rows) > 0 {
@@ -1026,7 +1026,7 @@ func (b *Bot) notifyManagers(booking models.Booking) {
 				tgbotapi.NewInlineKeyboardButtonData("🔄 Предложить выбрать другую дату", fmt.Sprintf("reschedule_%d", booking.ID)),
 			),
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("📞 Позвонить", fmt.Sprintf("tel:%s", booking.Phone)),
+				tgbotapi.NewInlineKeyboardButtonData("📞 Позвонить", fmt.Sprintf("call_booking:%d", booking.ID)),
 			),
 		)
 		msg.ReplyMarkup = &keyboard
@@ -1101,23 +1101,45 @@ func (b *Bot) handleCallButton(update tgbotapi.Update) {
 		return
 	}
 
-	// Извлекаем номер телефона из callback data
-	phone := strings.TrimPrefix(callback.Data, "tel:")
+	// Извлекаем ID заявки из callback data
+	data := strings.TrimPrefix(callback.Data, "call_booking:")
 
-	if phone == "" {
-		b.sendMessage(callback.Message.Chat.ID, "❌ Номер телефона не найден")
+	// Парсим ID заявки
+	bookingID, err := strconv.ParseInt(data, 10, 64)
+	if err != nil {
+		b.sendMessage(callback.Message.Chat.ID, "❌ Ошибка: неверный формат данных заявки")
+		// Подтверждаем callback даже при ошибке
+		b.bot.Send(tgbotapi.NewCallback(callback.ID, "❌ Ошибка"))
+		return
+	}
+
+	// Получаем заявку из базы данных
+	booking, err := b.db.GetBooking(context.Background(), bookingID)
+	if err != nil {
+		b.sendMessage(callback.Message.Chat.ID, "❌ Заявка не найдена")
+		b.bot.Send(tgbotapi.NewCallback(callback.ID, "❌ Заявка не найдена"))
+		return
+	}
+
+	if booking.Phone == "" {
+		b.sendMessage(callback.Message.Chat.ID, "❌ Номер телефона не указан в заявке")
+		b.bot.Send(tgbotapi.NewCallback(callback.ID, "❌ Номер не указан"))
 		return
 	}
 
 	// Форматируем номер для отображения
-	formattedPhone := b.formatPhoneForDisplay(phone)
+	formattedPhone := b.formatPhoneForDisplay(booking.Phone)
 
-	// Создаем сообщение с номером телефона
-	message := fmt.Sprintf("📞 Номер телефона: `%s`\n\n", formattedPhone)
-	message += "Вы можете:\n"
-	message += "• 📱 Позвонить по этому номеру\n"
-	message += "• 💬 Написать в WhatsApp\n"
-	message += "• ✉️ Отправить SMS"
+	// Создаем информативное сообщение
+	message := fmt.Sprintf("📞 *Информация для связи*\n\n")
+	message += fmt.Sprintf("👤 *Клиент:* %s\n", booking.UserName)
+	message += fmt.Sprintf("📱 *Телефон:* `%s`\n", formattedPhone)
+	message += fmt.Sprintf("🏢 *Аппарат:* %s\n", booking.ItemName)
+	message += fmt.Sprintf("📅 *Дата:* %s\n", booking.Date.Format("02.01.2006"))
+
+	if booking.Comment != "" {
+		message += fmt.Sprintf("💬 *Комментарий:* %s\n", booking.Comment)
+	}
 
 	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, message)
 	msg.ParseMode = "Markdown"
@@ -1125,15 +1147,16 @@ func (b *Bot) handleCallButton(update tgbotapi.Update) {
 	// Создаем клавиатуру с быстрыми действиями
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("📞 Позвонить", fmt.Sprintf("tel:%s", phone)),
-			tgbotapi.NewInlineKeyboardButtonURL("💬 WhatsApp", fmt.Sprintf("https://wa.me/%s", strings.TrimPrefix(phone, "+"))),
+			tgbotapi.NewInlineKeyboardButtonURL("💬 WhatsApp", fmt.Sprintf("https://wa.me/%s", strings.TrimPrefix(booking.Phone, "+"))),
+			tgbotapi.NewInlineKeyboardButtonURL("✉️ Telegram", fmt.Sprintf("https://t.me/%s", strings.TrimPrefix(booking.Phone, "+"))),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("✉️ SMS", fmt.Sprintf("sms:%s", phone)),
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад к заявке", fmt.Sprintf("show_booking:%d", booking.ID)),
 		),
 	)
 	msg.ReplyMarkup = &keyboard
 
+	b.bot.Send(tgbotapi.NewCallback(callback.ID, "✅"))
 	b.bot.Send(msg)
 }
 

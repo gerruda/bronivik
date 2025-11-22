@@ -313,8 +313,21 @@ func (b *Bot) handleCallbackQuery(update tgbotapi.Update) {
 		}
 		b.handleMainMenu(tempUpdate)
 
-	case strings.HasPrefix(data, "tel:"):
+	case strings.HasPrefix(data, "call_booking"):
 		b.handleCallButton(update)
+
+	case strings.HasPrefix(data, "show_booking:"):
+		parts := strings.Split(data, ":")
+		if len(parts) >= 2 {
+			bookingID, err := strconv.ParseInt(parts[1], 10, 64)
+			if err == nil {
+				// Получаем заявку и показываем детали
+				booking, err := b.db.GetBooking(context.Background(), bookingID)
+				if err == nil {
+					b.sendManagerBookingDetail(callback.Message.Chat.ID, booking)
+				}
+			}
+		}
 
 	default:
 		log.Printf("Unknown callback data: %s", callback.Data)
