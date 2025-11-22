@@ -791,6 +791,9 @@ func (b *Bot) sendManagerBookingDetail(chatID int64, booking *models.Booking) {
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("✏️ Изменить аппарат", fmt.Sprintf("change_item_%d", booking.ID)),
+		tgbotapi.NewInlineKeyboardButtonData("🔄 Предложить выбрать другую дату", fmt.Sprintf("reschedule_%d", booking.ID)),
+	))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("📞 Позвонить", fmt.Sprintf("tel:%s", booking.Phone)),
 	))
 
@@ -1016,7 +1019,8 @@ func (b *Bot) notifyManagers(booking models.Booking) {
 				tgbotapi.NewInlineKeyboardButtonData("❌ Отклонить", fmt.Sprintf("reject_%d", booking.ID)),
 			),
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🔄 Предложить другой выбор", fmt.Sprintf("reschedule_%d", booking.ID)),
+				tgbotapi.NewInlineKeyboardButtonData("✏️ Изменить аппарат", fmt.Sprintf("change_item_%d", booking.ID)),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 Предложить выбрать другую дату", fmt.Sprintf("reschedule_%d", booking.ID)),
 			),
 		)
 		msg.ReplyMarkup = &keyboard

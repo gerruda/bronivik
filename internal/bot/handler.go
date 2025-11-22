@@ -132,6 +132,17 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 			b.handleViewSchedule(update)
 		}
 
+	case text == "📅 30 дней":
+		// Проверяем, есть ли выбранный аппарат для расписания
+		state := b.getUserState(update.Message.From.ID)
+		if state != nil && state.TempData["selected_item"] != nil {
+			b.showMonthScheduleForItem(update)
+		} else {
+			// Если аппарат не выбран, просим выбрать сначала
+			b.sendMessage(update.Message.Chat.ID, "Сначала выберите аппарат для просмотра расписания")
+			b.handleViewSchedule(update)
+		}
+
 	case text == "🗓 Выбрать дату":
 		// Проверяем, есть ли выбранный аппарат для расписания
 		state := b.getUserState(update.Message.From.ID)
@@ -184,6 +195,10 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 		} else {
 			b.handleMainMenu(update)
 		}
+
+	case text == "⬅️ Назад в меню":
+		b.clearUserState(update.Message.From.ID)
+		b.handleMainMenu(update)
 
 	case state != nil && state.CurrentStep == StatePersonalData && text == "✅ Даю согласие":
 		b.handleNameRequest(update)
@@ -291,9 +306,12 @@ func (b *Bot) handleCallbackQuery(update tgbotapi.Update) {
 		}
 		b.editScheduleItemsPage(update, page)
 
-	case data == "back_to_main_from_schedule":
+	case strings.HasPrefix(data, "back_to_main"):
 		b.clearUserState(callback.From.ID)
-		b.handleMainMenu(update)
+		tempUpdate := tgbotapi.Update{
+			CallbackQuery: callback,
+		}
+		b.handleMainMenu(tempUpdate)
 
 	default:
 		log.Printf("Unknown callback data: %s", callback.Data)
@@ -380,6 +398,7 @@ func (b *Bot) sendScheduleMenu(chatID, userID int64) {
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("📅 7 дней"),
+			tgbotapi.NewKeyboardButton("📅 30 дней"),
 			tgbotapi.NewKeyboardButton("🗓 Выбрать дату"),
 		),
 		tgbotapi.NewKeyboardButtonRow(

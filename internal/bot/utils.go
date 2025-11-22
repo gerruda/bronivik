@@ -58,15 +58,30 @@ func (b *Bot) sendMessage(chatID int64, text string) {
 
 // handleMainMenu - главное меню с контактами
 func (b *Bot) handleMainMenu(update tgbotapi.Update) {
-	b.updateUserActivity(update.Message.From.ID)
+	var userID int64
+	var chatID int64
 
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+	// Определяем userID и chatID в зависимости от типа update
+	if update.Message != nil {
+		userID = update.Message.From.ID
+		chatID = update.Message.Chat.ID
+	} else if update.CallbackQuery != nil {
+		userID = update.CallbackQuery.From.ID
+		chatID = update.CallbackQuery.Message.Chat.ID
+	} else {
+		log.Printf("Error: cannot determine userID and chatID in handleMainMenu")
+		return
+	}
+
+	b.updateUserActivity(userID)
+
+	msg := tgbotapi.NewMessage(chatID,
 		"Добро пожаловать! Выберите действие:")
 
 	var rows [][]tgbotapi.KeyboardButton
 
 	// Основные кнопки для всех пользователей
-	if !b.isManager(update.Message.From.ID) {
+	if !b.isManager(userID) {
 		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("📅 Посмотреть расписание"),
 			tgbotapi.NewKeyboardButton("💼 Доступные позиции"),
@@ -83,7 +98,7 @@ func (b *Bot) handleMainMenu(update tgbotapi.Update) {
 	}
 
 	// Кнопки только для менеджеров
-	if b.isManager(update.Message.From.ID) {
+	if b.isManager(userID) {
 		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("👨‍💼 Все заявки"),
 		))
@@ -98,7 +113,7 @@ func (b *Bot) handleMainMenu(update tgbotapi.Update) {
 
 	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(rows...)
 
-	b.setUserState(update.Message.From.ID, StateMainMenu, nil)
+	b.setUserState(userID, StateMainMenu, nil)
 	b.bot.Send(msg)
 }
 
@@ -529,6 +544,42 @@ func (b *Bot) showWeekScheduleForItem(update tgbotapi.Update) {
 	message.WriteString(fmt.Sprintf("📅 Расписание *%s* на ближайшие 7 дней:\n\n", selectedItem.Name))
 
 	availability, err := b.db.GetAvailabilityForPeriod(context.Background(), selectedItem.ID, startDate, 7)
+	if err != nil {
+		log.Printf("Error getting availability: %v", err)
+		b.sendMessage(update.Message.Chat.ID, "Ошибка при получении расписания")
+		return
+	}
+
+	for _, avail := range availability {
+		status := "✅ Свободно"
+		if avail.Available == 0 {
+			status = "❌ Занято"
+		}
+
+		message.WriteString(fmt.Sprintf("   %s: %s\n",
+			avail.Date.Format("02.01"), status))
+	}
+
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
+	msg.ParseMode = "Markdown"
+	b.bot.Send(msg)
+}
+
+// showMonthScheduleForItem показывает расписание на 30 дней для выбранного аппарата
+func (b *Bot) showMonthScheduleForItem(update tgbotapi.Update) {
+	state := b.getUserState(update.Message.From.ID)
+	if state == nil || state.TempData["selected_item"] == nil {
+		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не выбран")
+		return
+	}
+
+	selectedItem := state.TempData["selected_item"].(models.Item)
+	startDate := time.Now()
+
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("📅 Расписание *%s* на ближайшие 30 дней:\n\n", selectedItem.Name))
+
+	availability, err := b.db.GetAvailabilityForPeriod(context.Background(), selectedItem.ID, startDate, 30)
 	if err != nil {
 		log.Printf("Error getting availability: %v", err)
 		b.sendMessage(update.Message.Chat.ID, "Ошибка при получении расписания")
