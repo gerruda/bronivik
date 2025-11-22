@@ -141,7 +141,7 @@ func (b *Bot) showUserBookings(update tgbotapi.Update) {
 	}
 
 	var message strings.Builder
-	message.WriteString("📊 Ваши заявки:\n\n")
+	message.WriteString("📊 Ваши заявки (за последние 2 недели и предстоящие):\n\n")
 
 	for _, booking := range bookings {
 		statusEmoji := "⏳"

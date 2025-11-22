@@ -311,14 +311,17 @@ func (db *DB) UpdateBookingItem(ctx context.Context, id int64, itemID int64, ite
 
 // GetUserBookings возвращает список всех бронирований пользователя
 func (db *DB) GetUserBookings(ctx context.Context, userID int64) ([]models.Booking, error) {
+	// Рассчитываем дату 2 недели назад
+	twoWeeksAgo := time.Now().AddDate(0, 0, -14)
+
 	query := `
         SELECT id, user_id, user_name, user_nickname, phone, item_id, item_name, date, status, comment, created_at, updated_at
         FROM bookings 
-        WHERE user_id = ?
+        WHERE user_id = ? AND date >= ?
         ORDER BY created_at DESC
     `
 
-	rows, err := db.QueryContext(ctx, query, userID)
+	rows, err := db.QueryContext(ctx, query, userID, twoWeeksAgo.Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
