@@ -121,11 +121,11 @@ func (b *Bot) handleMainMenu(update tgbotapi.Update) {
 func (b *Bot) showManagerContacts(update tgbotapi.Update) {
 	contacts := b.config.ManagersContacts
 	var message strings.Builder
-	message.WriteString("📞 Контакты менеджеров:\n\n")
+	message.WriteString("📞 Контакты менеджера:\n\n")
 	for _, contact := range contacts {
 		message.WriteString(fmt.Sprintf("🔹 %s\n", contact))
 	}
-	message.WriteString("\nВы можете связаться с ними для уточнения деталей.")
+	message.WriteString("\nПо любым интересующим Вас вопросам, дадим ответ.")
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
 	b.bot.Send(msg)
@@ -340,7 +340,7 @@ func (b *Bot) finalizeBooking(update tgbotapi.Update) {
 	}
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-		fmt.Sprintf("✅ Ваша заявка #%d успешно создана! Менеджер свяжется с вами для подтверждения.", booking.ID))
+		fmt.Sprintf("✅ Ваша заявка #%d на позицию %s успешно создана!\nМенеджер свяжется с вами для подтверждения.", booking.ID, booking.ItemName))
 
 	go func() {
 		time.Sleep(1 * time.Second) // Небольшая задержка для завершения операции в БД
@@ -529,42 +529,6 @@ func (b *Bot) showAvailableItems(update tgbotapi.Update) {
 	b.bot.Send(msg)
 }
 
-// showWeekScheduleForItem показывает расписание на 7 дней для выбранного аппарата
-func (b *Bot) showWeekScheduleForItem(update tgbotapi.Update) {
-	state := b.getUserState(update.Message.From.ID)
-	if state == nil || state.TempData["selected_item"] == nil {
-		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не выбран")
-		return
-	}
-
-	selectedItem := state.TempData["selected_item"].(models.Item)
-	startDate := time.Now()
-
-	var message strings.Builder
-	message.WriteString(fmt.Sprintf("📅 Расписание *%s* на ближайшие 7 дней:\n\n", selectedItem.Name))
-
-	availability, err := b.db.GetAvailabilityForPeriod(context.Background(), selectedItem.ID, startDate, 7)
-	if err != nil {
-		log.Printf("Error getting availability: %v", err)
-		b.sendMessage(update.Message.Chat.ID, "Ошибка при получении расписания")
-		return
-	}
-
-	for _, avail := range availability {
-		status := "✅ Свободно"
-		if avail.Available == 0 {
-			status = "❌ Занято"
-		}
-
-		message.WriteString(fmt.Sprintf("   %s: %s\n",
-			avail.Date.Format("02.01"), status))
-	}
-
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
-	msg.ParseMode = "Markdown"
-	b.bot.Send(msg)
-}
-
 // showMonthScheduleForItem показывает расписание на 30 дней для выбранного аппарата
 func (b *Bot) showMonthScheduleForItem(update tgbotapi.Update) {
 	state := b.getUserState(update.Message.From.ID)
@@ -576,9 +540,6 @@ func (b *Bot) showMonthScheduleForItem(update tgbotapi.Update) {
 	selectedItem := state.TempData["selected_item"].(models.Item)
 	startDate := time.Now()
 
-	var message strings.Builder
-	message.WriteString(fmt.Sprintf("📅 Расписание *%s* на ближайшие 30 дней:\n\n", selectedItem.Name))
-
 	availability, err := b.db.GetAvailabilityForPeriod(context.Background(), selectedItem.ID, startDate, 30)
 	if err != nil {
 		log.Printf("Error getting availability: %v", err)
@@ -586,15 +547,24 @@ func (b *Bot) showMonthScheduleForItem(update tgbotapi.Update) {
 		return
 	}
 
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("📅 *Расписание %s*\n", selectedItem.Name))
+	message.WriteString("На ближайшие 30 дней:\n\n")
+
+	message.WriteString("```\n")
+	message.WriteString("Дата     Статус\n")
+	message.WriteString("───────  ──────────\n")
+
 	for _, avail := range availability {
 		status := "✅ Свободно"
 		if avail.Available == 0 {
-			status = "❌ Занято"
+			status = "❌ Занято  "
 		}
 
-		message.WriteString(fmt.Sprintf("   %s: %s\n",
+		message.WriteString(fmt.Sprintf("%s   %s\n",
 			avail.Date.Format("02.01"), status))
 	}
+	message.WriteString("```")
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
 	msg.ParseMode = "Markdown"

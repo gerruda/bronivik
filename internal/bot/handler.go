@@ -121,17 +121,6 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 	case text == "📋 Создать заявку":
 		b.handleSelectItem(update)
 
-	case text == "📅 7 дней":
-		// Проверяем, есть ли выбранный аппарат для расписания
-		state := b.getUserState(update.Message.From.ID)
-		if state != nil && state.TempData["selected_item"] != nil {
-			b.showWeekScheduleForItem(update)
-		} else {
-			// Если аппарат не выбран, просим выбрать сначала
-			b.sendMessage(update.Message.Chat.ID, "Сначала выберите аппарат для просмотра расписания")
-			b.handleViewSchedule(update)
-		}
-
 	case text == "📅 30 дней":
 		// Проверяем, есть ли выбранный аппарат для расписания
 		state := b.getUserState(update.Message.From.ID)
@@ -413,7 +402,6 @@ func (b *Bot) sendScheduleMenu(chatID, userID int64) {
 
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📅 7 дней"),
 			tgbotapi.NewKeyboardButton("📅 30 дней"),
 			tgbotapi.NewKeyboardButton("🗓 Выбрать дату"),
 		),
