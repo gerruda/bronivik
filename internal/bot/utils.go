@@ -83,17 +83,16 @@ func (b *Bot) handleMainMenu(update tgbotapi.Update) {
 	// Основные кнопки для всех пользователей
 	if !b.isManager(userID) {
 		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📅 Посмотреть расписание"),
-			tgbotapi.NewKeyboardButton("💼 Доступные позиции"),
+			tgbotapi.NewKeyboardButton("📋 СОЗДАТЬ ЗАЯВКУ"),
 		))
-
 		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📋 Создать заявку"),
-			tgbotapi.NewKeyboardButton("📞 Контакты менеджеров"),
+			tgbotapi.NewKeyboardButton("📅 Посмотреть расписание"),
+			tgbotapi.NewKeyboardButton("💼 Ассортимент"),
 		))
 
 		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("📊 Мои заявки"),
+			tgbotapi.NewKeyboardButton("📞 Контакты менеджеров"),
 		))
 	}
 

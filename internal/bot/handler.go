@@ -112,13 +112,13 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 	case text == "📊 Мои заявки":
 		b.showUserBookings(update)
 
-	case text == "💼 Доступные позиции":
+	case text == "💼 Ассортимент":
 		b.showAvailableItems(update)
 
 	case text == "📅 Посмотреть расписание":
 		b.handleViewSchedule(update)
 
-	case text == "📋 Создать заявку":
+	case text == "📋 СОЗДАТЬ ЗАЯВКУ":
 		b.handleSelectItem(update)
 
 	case text == "📅 30 дней":
@@ -145,7 +145,7 @@ func (b *Bot) handleMessage(update tgbotapi.Update) {
 	case text == "⬅️ Назад к выбору аппарата":
 		b.handleViewSchedule(update)
 
-	case text == "📋 Создать заявку на этот аппарат":
+	case text == "📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ":
 		state := b.getUserState(update.Message.From.ID)
 		if state != nil && state.TempData["selected_item"] != nil {
 			selectedItem := state.TempData["selected_item"].(models.Item)
@@ -402,12 +402,14 @@ func (b *Bot) sendScheduleMenu(chatID, userID int64) {
 
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("📅 30 дней"),
 			tgbotapi.NewKeyboardButton("🗓 Выбрать дату"),
 		),
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("⬅️ Назад к выбору аппарата"),
-			tgbotapi.NewKeyboardButton("📋 Создать заявку на этот аппарат"),
 		),
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("⬅️ Назад в меню"),

@@ -975,7 +975,7 @@ func (b *Bot) rescheduleBooking(booking *models.Booking, managerChatID int64) {
 
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📋 Создать заявку"),
+			tgbotapi.NewKeyboardButton("📋 СОЗДАТЬ ЗАЯВКУ"),
 		),
 	)
 	userMsg.ReplyMarkup = keyboard
