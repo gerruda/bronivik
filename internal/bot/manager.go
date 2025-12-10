@@ -26,6 +26,9 @@ func (b *Bot) handleManagerCommand(update tgbotapi.Update) bool {
 	case text == "👨‍💼 Все заявки":
 		b.showManagerBookings(update)
 
+	case text == "/get_all":
+		b.showManagerBookings(update)
+
 	case text == "➕ Создать заявку (Менеджер)":
 		b.startManagerBooking(update)
 
@@ -521,6 +524,8 @@ func (b *Bot) createManagerBookings(update tgbotapi.Update, state *models.UserSt
 
 // showManagerBookings показывает все заявки менеджеру
 func (b *Bot) showManagerBookings(update tgbotapi.Update) {
+	log.Printf("Info: showManagerBookings START")
+
 	if !b.isManager(update.Message.From.ID) {
 		return
 	}
