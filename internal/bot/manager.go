@@ -527,6 +527,8 @@ func (b *Bot) showManagerBookings(update tgbotapi.Update) {
 	log.Printf("Info: showManagerBookings START")
 
 	if !b.isManager(update.Message.From.ID) {
+		log.Printf("Info: showManagerBookings not a manger")
+
 		return
 	}
 
