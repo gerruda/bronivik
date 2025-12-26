@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"bronivik/internal/bot"
 	"bronivik/internal/config"
@@ -45,6 +46,21 @@ func main() {
 	if err := yaml.Unmarshal(itemsData, &itemsConfig); err != nil {
 		log.Fatal("Ошибка парсинга items.yaml:", err)
 	}
+
+	// Сортируем items по полю Order (по возрастанию)
+	sort.Slice(itemsConfig.Items, func(i, j int) bool {
+		// Если Order не задан, считаем его 0 (будет в начале)
+		orderI := itemsConfig.Items[i].Order
+		orderJ := itemsConfig.Items[j].Order
+
+		// Сначала сортируем по Order
+		if orderI != orderJ {
+			return orderI < orderJ
+		}
+
+		// Если Order одинаковый, сортируем по ID для стабильности
+		return itemsConfig.Items[i].ID < itemsConfig.Items[j].ID
+	})
 
 	// Создаем необходимые директории
 	if cfg == nil {

@@ -391,8 +391,10 @@ func (b *Bot) sendScheduleItemsPage(chatID, userID int64, page int) {
 
 	currentItems := b.items[startIdx:endIdx]
 	for i, item := range currentItems {
-		message.WriteString(fmt.Sprintf("%d. *%s*\n", startIdx+i+1, item.Name))
-		message.WriteString(fmt.Sprintf("   📝 %s\n", item.Description))
+		message.WriteString(fmt.Sprintf("%d. *%s*\n", i+1, item.Name))
+		if item.Description != "" {
+			message.WriteString(fmt.Sprintf("   📝 %s\n", item.Description))
+		}
 	}
 
 	var keyboard [][]tgbotapi.InlineKeyboardButton
@@ -532,13 +534,14 @@ func (b *Bot) sendItemsPage(chatID, userID int64, page int) {
 
 // showAvailableItems показывает доступные позиции
 func (b *Bot) showAvailableItems(update tgbotapi.Update) {
-	items := b.items
 	var message strings.Builder
 	message.WriteString("🏢 Доступные позиции:\n\n")
 
-	for _, item := range items {
+	for _, item := range b.items {
 		message.WriteString(fmt.Sprintf("🔹 %s\n", item.Name))
-		message.WriteString(fmt.Sprintf("   %s\n", item.Description))
+		if item.Description != "" {
+			message.WriteString(fmt.Sprintf("   📝 %s\n", item.Description))
+		}
 		message.WriteString("\n")
 	}
 

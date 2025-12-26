@@ -35,6 +35,40 @@ google:
   bookings_spreadsheet_id: ${BOOKINGS_SPREADSHEET_ID}
 ```
 
+###Общая информация
+Файл configs/items.yaml содержит конфигурацию всех аппаратов для бронирования в системе. После внесения изменений требуется перезапуск бота.
+
+###Структура файла
+items:
+- id: 1                    # Уникальный числовой идентификатор
+  name: "BBL S"           # Название аппарата
+  description: ""         # Описание (опционально)
+  total_quantity: 1       # Общее количество единиц
+  order: 10               # Порядок отображения (чем меньше, тем выше)
+- id: 2
+  name: "Ultraformer MPT"
+  description: ""
+  total_quantity: 2
+  order: 20
+# ... остальные аппараты
+Поля:
+id (обязательное) - уникальный числовой идентификатор. Нельзя повторять!
+
+name (обязательное) - название аппарата для отображения в боте
+
+description (опционально) - дополнительное описание
+
+total_quantity (обязательное) - максимальное количество доступных единиц для бронирования
+
+order (обязательное) - порядковый номер для сортировки (рекомендуется использовать шаг 10)
+
+При Удалении или добавлении позиции, id обязан быть уникальным.
+При удалении позиции, его id больше не используется. Поэтому лучше комментировать строки его конфигурации.
+При добавлении позиции, его id НЕ может совпадать с другими существующими!
+Для изменения порядка можно переопределять поле `order`. В случае совпадения этого поля, то выше в списке будет тот у кого id ближе к order
+
+
+
 ## Переменные окружения (`.env`)
 
 ```bash
@@ -124,3 +158,32 @@ docker logs -f booking-bot
 docker-compose -f ./docker/docker-compose.dev.yml up -d
 
 docker-compose -f ./docker/docker-compose.dev.yml --env-file .env up -d
+
+### sqlite
+
+sqlite3 /path/to/your/database.db
+
+-- Посмотреть таблицы
+.tables
+
+-- Посмотреть структуру таблицы bookings
+.schema bookings
+
+-- Посмотреть первые 10 записей
+SELECT * FROM bookings LIMIT 10;
+
+-- Посмотреть количество записей
+SELECT COUNT(*) FROM bookings;
+
+-- Посмотреть заявки за последние дни
+SELECT id, user_name, item_name, date, status, created_at
+FROM bookings
+WHERE date(created_at) >= date('now', '-7 days')
+ORDER BY created_at DESC;
+
+-- Выйти
+.quit
+
+-- Удалить все записи, кроме первых двух (по ID)
+DELETE FROM bookings WHERE id > 2;
+

@@ -5,4 +5,5 @@ type Item struct {
 	Name          string `yaml:"name"`
 	Description   string `yaml:"description"`
 	TotalQuantity int64  `yaml:"total_quantity"`
+	Order         int    `yaml:"order" json:"order"`
 }
