@@ -14,8 +14,9 @@ import (
 )
 
 type DB struct {
-	*sql.DB
-	items map[int64]models.Item
+	db          *sql.DB
+	items       map[int64]models.Item
+	sortedItems []models.Item
 }
 
 func NewDB(path string) (*DB, error) {
@@ -41,7 +42,7 @@ func NewDB(path string) (*DB, error) {
 	}
 
 	log.Printf("База данных инициализирована: %s", path)
-	return &DB{db, make(map[int64]models.Item)}, nil
+	return &DB{db: db, items: make(map[int64]models.Item), sortedItems: []models.Item{}}, nil
 }
 
 func createTables(db *sql.DB) error {
@@ -103,6 +104,8 @@ func (db *DB) SetItems(items []models.Item) {
 	for _, item := range items {
 		db.items[item.ID] = item
 	}
+	// Сохраняем также отсортированный список для использования в боте
+	db.sortedItems = items
 }
 
 // CheckAvailability проверяет доступность позиции на указанную дату
@@ -118,7 +121,7 @@ func (db *DB) CheckAvailability(ctx context.Context, itemID int64, date time.Tim
     `
 
 	var bookedCount int
-	err := db.QueryRowContext(ctx, query, itemID, dateStr).Scan(&bookedCount)
+	err := db.db.QueryRowContext(ctx, query, itemID, dateStr).Scan(&bookedCount)
 	if err != nil {
 		return false, err
 	}
@@ -145,7 +148,7 @@ func (db *DB) GetBookedCount(ctx context.Context, itemID int64, date time.Time) 
     `
 
 	var count int
-	err := db.QueryRowContext(ctx, query, itemID, dateStr).Scan(&count)
+	err := db.db.QueryRowContext(ctx, query, itemID, dateStr).Scan(&count)
 	return count, err
 }
 
@@ -157,7 +160,7 @@ func (db *DB) CreateBooking(ctx context.Context, booking *models.Booking) error 
         RETURNING id
     `
 
-	result, err := db.ExecContext(ctx, query,
+	result, err := db.db.ExecContext(ctx, query,
 		booking.UserID,
 		booking.UserName,
 		booking.UserNickname,
@@ -187,7 +190,7 @@ func (db *DB) CreateBooking(ctx context.Context, booking *models.Booking) error 
 // UpdateBookingComment обновляет комментарий заявки
 func (db *DB) UpdateBookingComment(ctx context.Context, bookingID int64, comment string) error {
 	query := `UPDATE bookings SET comment = $1, updated_at = $2 WHERE id = $3`
-	_, err := db.ExecContext(ctx, query, comment, time.Now(), bookingID)
+	_, err := db.db.ExecContext(ctx, query, comment, time.Now(), bookingID)
 	return err
 }
 
@@ -199,7 +202,7 @@ func (db *DB) GetBooking(ctx context.Context, id int64) (*models.Booking, error)
     `
 
 	var booking models.Booking
-	err := db.QueryRowContext(ctx, query, id).Scan(
+	err := db.db.QueryRowContext(ctx, query, id).Scan(
 		&booking.ID,
 		&booking.UserID,
 		&booking.UserName,
@@ -225,12 +228,16 @@ func (db *DB) GetBooking(ctx context.Context, id int64) (*models.Booking, error)
 func (db *DB) UpdateBookingStatus(ctx context.Context, id int64, status string) error {
 	query := `UPDATE bookings SET status = ? WHERE id = ?`
 
-	_, err := db.ExecContext(ctx, query, status, id)
+	_, err := db.db.ExecContext(ctx, query, status, id)
 	return err
 }
 
 // GetBookingsByDateRange возвращает бронирования за период
 func (db *DB) GetBookingsByDateRange(ctx context.Context, startDate, endDate time.Time) ([]models.Booking, error) {
+	log.Printf("GetBookingsByDateRange: запрос от %s до %s",
+		startDate.Format("2006-01-02"),
+		endDate.Format("2006-01-02"))
+
 	query := `
         SELECT id, user_id, user_name, user_nickname, phone, item_id, item_name, 
                date, status, comment, created_at, updated_at
@@ -239,7 +246,7 @@ func (db *DB) GetBookingsByDateRange(ctx context.Context, startDate, endDate tim
         ORDER BY date, created_at
     `
 
-	rows, err := db.QueryContext(ctx, query,
+	rows, err := db.db.QueryContext(ctx, query,
 		startDate.Format("2006-01-02"),
 		endDate.Format("2006-01-02"))
 	if err != nil {
@@ -316,7 +323,7 @@ func (db *DB) GetAvailabilityForPeriod(ctx context.Context, itemID int64, startD
 func (db *DB) UpdateBookingItem(ctx context.Context, id int64, itemID int64, itemName string) error {
 	query := `UPDATE bookings SET item_id = ?, item_name = ?, updated_at = ? WHERE id = ?`
 
-	_, err := db.ExecContext(ctx, query, itemID, itemName, time.Now(), id)
+	_, err := db.db.ExecContext(ctx, query, itemID, itemName, time.Now(), id)
 	return err
 }
 
@@ -332,7 +339,7 @@ func (db *DB) GetUserBookings(ctx context.Context, userID int64) ([]models.Booki
         ORDER BY created_at DESC
     `
 
-	rows, err := db.QueryContext(ctx, query, userID, twoWeeksAgo.Format("2006-01-02"))
+	rows, err := db.db.QueryContext(ctx, query, userID, twoWeeksAgo.Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
@@ -399,15 +406,6 @@ func (db *DB) GetDailyBookings(ctx context.Context, startDate, endDate time.Time
 	return dailyBookings, nil
 }
 
-// GetItems возвращает список всех позиций
-func (db *DB) GetItems() []models.Item {
-	items := make([]models.Item, 0, len(db.items))
-	for _, item := range db.items {
-		items = append(items, item)
-	}
-	return items
-}
-
 // User methods
 
 // CreateOrUpdateUser создает или обновляет пользователя
@@ -427,7 +425,7 @@ func (db *DB) CreateOrUpdateUser(ctx context.Context, user *models.User) error {
             updated_at = excluded.updated_at
     `
 
-	_, err := db.ExecContext(ctx, query,
+	_, err := db.db.ExecContext(ctx, query,
 		user.TelegramID,
 		user.Username,
 		user.FirstName,
@@ -452,7 +450,7 @@ func (db *DB) GetUserByTelegramID(ctx context.Context, telegramID int64) (*model
     `
 
 	var user models.User
-	err := db.QueryRowContext(ctx, query, telegramID).Scan(
+	err := db.db.QueryRowContext(ctx, query, telegramID).Scan(
 		&user.ID,
 		&user.TelegramID,
 		&user.Username,
@@ -478,7 +476,7 @@ func (db *DB) GetUserByTelegramID(ctx context.Context, telegramID int64) (*model
 func (db *DB) UpdateUserPhone(ctx context.Context, telegramID int64, phone string) error {
 	query := `UPDATE users SET phone = ?, updated_at = ? WHERE telegram_id = ?`
 
-	_, err := db.ExecContext(ctx, query, phone, time.Now(), telegramID)
+	_, err := db.db.ExecContext(ctx, query, phone, time.Now(), telegramID)
 	return err
 }
 
@@ -486,7 +484,7 @@ func (db *DB) UpdateUserPhone(ctx context.Context, telegramID int64, phone strin
 func (db *DB) UpdateUserActivity(ctx context.Context, telegramID int64) error {
 	query := `UPDATE users SET last_activity = ?, updated_at = ? WHERE telegram_id = ?`
 
-	_, err := db.ExecContext(ctx, query, time.Now(), time.Now(), telegramID)
+	_, err := db.db.ExecContext(ctx, query, time.Now(), time.Now(), telegramID)
 	return err
 }
 
@@ -497,7 +495,7 @@ func (db *DB) GetAllUsers(ctx context.Context) ([]models.User, error) {
         FROM users ORDER BY created_at DESC
     `
 
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -540,7 +538,7 @@ func (db *DB) GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]mo
         FROM users WHERE is_manager = ? ORDER BY created_at DESC
     `
 
-	rows, err := db.QueryContext(ctx, query, isManager)
+	rows, err := db.db.QueryContext(ctx, query, isManager)
 	if err != nil {
 		return nil, err
 	}
@@ -584,7 +582,7 @@ func (db *DB) GetActiveUsers(ctx context.Context, days int) ([]models.User, erro
     `
 
 	cutoffDate := time.Now().AddDate(0, 0, -days)
-	rows, err := db.QueryContext(ctx, query, cutoffDate)
+	rows, err := db.db.QueryContext(ctx, query, cutoffDate)
 	if err != nil {
 		return nil, err
 	}
@@ -621,5 +619,5 @@ func (db *DB) GetActiveUsers(ctx context.Context, days int) ([]models.User, erro
 }
 
 func (db *DB) Close() error {
-	return db.DB.Close()
+	return db.db.Close()
 }
