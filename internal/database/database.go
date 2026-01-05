@@ -348,7 +348,7 @@ func (db *DB) CheckAvailability(ctx context.Context, itemID int64, date time.Tim
         FROM bookings 
         WHERE item_id = ? 
         AND date(date) = date(?)
-        AND status IN ('pending', 'confirmed')
+        AND status IN ('" + models.StatusPending + "', '" + models.StatusConfirmed + "')
     `
 
 	var bookedCount int
@@ -375,7 +375,7 @@ func (db *DB) GetBookedCount(ctx context.Context, itemID int64, date time.Time) 
         FROM bookings 
         WHERE item_id = ? 
         AND date(date) = date(?)
-        AND status IN ('pending', 'confirmed')
+        AND status IN ('" + models.StatusPending + "', '" + models.StatusConfirmed + "')
     `
 
 	var count int
@@ -430,7 +430,7 @@ func (db *DB) CreateBookingWithLock(ctx context.Context, booking *models.Booking
 	booking.CreatedAt = now
 	booking.UpdatedAt = now
 	if booking.Status == "" {
-		booking.Status = "pending"
+		booking.Status = models.StatusPending
 	}
 
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
@@ -451,7 +451,7 @@ func (db *DB) CreateBookingWithLock(ctx context.Context, booking *models.Booking
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM bookings
-		WHERE item_id = ? AND date(date) = date(?) AND status IN ('pending', 'confirmed')
+		WHERE item_id = ? AND date(date) = date(?) AND status IN ('" + models.StatusPending + "', '" + models.StatusConfirmed + "')
 	`, booking.ItemID, booking.Date.Format("2006-01-02")).Scan(&booked); err != nil {
 		return err
 	}

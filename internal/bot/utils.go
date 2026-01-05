@@ -795,7 +795,7 @@ func (b *Bot) handleCustomInput(ctx context.Context, update tgbotapi.Update, sta
 
 // handleDateInput обрабатывает ввод даты для бронирования
 func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateStr string, state *models.UserState) {
-	b.debugState(update.Message.From.ID, "handleDateInput START")
+	b.debugState(ctx, update.Message.From.ID, "handleDateInput START")
 
 	date, err := time.Parse("02.01.2006", dateStr)
 	if err != nil {
@@ -1001,4 +1001,29 @@ func (b *Bot) normalizePhone(phone string) string {
 	}
 
 	return "" // Неверный формат
+}
+
+// formatPhoneForDisplay форматирует номер телефона для красивого отображения
+func (b *Bot) formatPhoneForDisplay(phone string) string {
+	// Убираем все нецифровые символы
+	cleaned := ""
+	for _, char := range phone {
+		if char >= '0' && char <= '9' {
+			cleaned += string(char)
+		}
+	}
+
+	// Форматируем в зависимости от длины
+	if len(cleaned) == 11 && cleaned[0] == '7' {
+		// Российский номер: +7 (XXX) XXX-XX-XX
+		return fmt.Sprintf("+7 (%s) %s-%s-%s",
+			cleaned[1:4], cleaned[4:7], cleaned[7:9], cleaned[9:])
+	} else if len(cleaned) == 10 {
+		// Номер без кода страны: (XXX) XXX-XX-XX
+		return fmt.Sprintf("(%s) %s-%s-%s",
+			cleaned[0:3], cleaned[3:6], cleaned[6:8], cleaned[8:])
+	}
+
+	// Возвращаем исходный номер, если форматирование не применимо
+return phone
 }

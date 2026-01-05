@@ -3,6 +3,9 @@ package bot
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -113,11 +116,11 @@ func (b *Bot) handleManagerCommand(ctx context.Context, update tgbotapi.Update) 
 	return false
 }
 
-// handleManagerAction обработка действий менеджера с заявками
-func (b *Bot) handleManagerAction(ctx context.Context, update tgbotapi.Update) {
+// handleManagerCallback обработка действий менеджера с заявками
+func (b *Bot) handleManagerCallback(ctx context.Context, update tgbotapi.Update) bool {
 	callback := update.CallbackQuery
 	if callback == nil {
-		return
+		return false
 	}
 
 	data := callback.Data
@@ -134,13 +137,18 @@ func (b *Bot) handleManagerAction(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	if action == "" {
-		return
+		// Проверяем другие действия менеджера
+		if data == "export_users" {
+			b.handleExportUsers(ctx, update)
+			return true
+		}
+		return false
 	}
 
 	booking, err := b.db.GetBooking(ctx, bookingID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("booking_id", bookingID).Msg("Error getting booking")
-		return
+		return true
 	}
 
 	switch action {
@@ -163,6 +171,7 @@ func (b *Bot) handleManagerAction(ctx context.Context, update tgbotapi.Update) {
 		fmt.Sprintf("✅ Заявка #%d обработана\nДействие: %s", bookingID, action))
 	b.bot.Send(editMsg)
 
+	return true
 }
 
 // startManagerBooking начало создания заявки менеджером
@@ -506,7 +515,7 @@ func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update,
 			ItemID:       selectedItem.ID,
 			ItemName:     selectedItem.Name,
 			Date:         date,
-			Status:       "confirmed", // Менеджер создает сразу подтвержденные заявки
+			Status:       models.StatusConfirmed, // Менеджер создает сразу подтвержденные заявки
 			Comment:      comment,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
@@ -518,8 +527,8 @@ func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update,
 			failedDates = append(failedDates, date.Format("02.01.2006"))
 		} else {
 			createdBookings = append(createdBookings, booking)
-			b.publishBookingEvent(events.EventBookingCreated, *booking, "manager", update.Message.From.ID)
-			b.publishBookingEvent(events.EventBookingConfirmed, *booking, "manager", update.Message.From.ID)
+			b.publishBookingEvent(ctx, events.EventBookingCreated, *booking, "manager", update.Message.From.ID)
+			b.publishBookingEvent(ctx, events.EventBookingConfirmed, *booking, "manager", update.Message.From.ID)
 		}
 	}
 
@@ -587,15 +596,15 @@ func (b *Bot) showManagerBookings(ctx context.Context, update tgbotapi.Update) {
 	for _, booking := range bookings {
 		statusEmoji := "⏳"
 		switch booking.Status {
-		case "confirmed":
+		case models.StatusConfirmed:
 			statusEmoji = "✅"
-		case "cancelled":
+		case models.StatusCancelled:
 			statusEmoji = "❌"
-		case "changed":
+		case models.StatusChanged:
 			statusEmoji = "🔄"
 		case "rescheduled":
 			statusEmoji = "🔄"
-		case "completed":
+		case models.StatusCompleted:
 			statusEmoji = "🏁"
 		}
 
@@ -629,11 +638,11 @@ func (b *Bot) showManagerBookingDetail(ctx context.Context, update tgbotapi.Upda
 	}
 
 	statusText := map[string]string{
-		"pending":   "⏳ Ожидает подтверждения",
-		"confirmed": "✅ Подтверждена",
-		"cancelled": "❌ Отменена",
-		"changed":   "🔄 Изменена",
-		"completed": "🏁 Завершена",
+		models.StatusPending:   "⏳ Ожидает подтверждения",
+		models.StatusConfirmed: "✅ Подтверждена",
+		models.StatusCancelled: "❌ Отменена",
+		models.StatusChanged:   "🔄 Изменена",
+		models.StatusCompleted: "🏁 Завершена",
 	}
 
 	message := fmt.Sprintf(`📋 Заявка #%d
@@ -662,14 +671,14 @@ func (b *Bot) showManagerBookingDetail(ctx context.Context, update tgbotapi.Upda
 	// Создаем инлайн-клавиатуру для управления заявкой
 	var rows [][]tgbotapi.InlineKeyboardButton
 
-	if booking.Status == "pending" || booking.Status == "changed" {
+	if booking.Status == models.StatusPending || booking.Status == models.StatusChanged {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Подтвердить", fmt.Sprintf("confirm_%d", booking.ID)),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отклонить", fmt.Sprintf("reject_%d", booking.ID)),
 		))
 	}
 
-	if booking.Status == "confirmed" {
+	if booking.Status == models.StatusConfirmed {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Вернуть в работу", fmt.Sprintf("reopen_%d", booking.ID)),
 			tgbotapi.NewInlineKeyboardButtonData("🏁 Завершить", fmt.Sprintf("complete_%d", booking.ID)),
@@ -693,7 +702,7 @@ func (b *Bot) showManagerBookingDetail(ctx context.Context, update tgbotapi.Upda
 }
 
 // startChangeItem начало изменения аппарата в заявке
-func (b *Bot) startChangeItem(booking *models.Booking, managerChatID int64) {
+func (b *Bot) startChangeItem(ctx context.Context, booking *models.Booking, managerChatID int64) {
 	msg := tgbotapi.NewMessage(managerChatID,
 		"Выберите новый аппарат для заявки #"+strconv.FormatInt(booking.ID, 10)+":")
 
@@ -756,7 +765,7 @@ func (b *Bot) handleChangeItem(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Обновляем заявку и статус с проверкой версии
-	err = b.db.UpdateBookingItemAndStatusWithVersion(ctx, bookingID, booking.Version, selectedItem.ID, selectedItem.Name, "changed")
+	err = b.db.UpdateBookingItemAndStatusWithVersion(ctx, bookingID, booking.Version, selectedItem.ID, selectedItem.Name, models.StatusChanged)
 	if err != nil {
 		if err == database.ErrConcurrentModification {
 			b.sendMessage(callback.Message.Chat.ID, "Заявка была обновлена кем-то еще. Обновите данные и попробуйте снова.")
@@ -769,9 +778,9 @@ func (b *Bot) handleChangeItem(ctx context.Context, update tgbotapi.Update) {
 
 	booking.ItemID = selectedItem.ID
 	booking.ItemName = selectedItem.Name
-	booking.Status = "changed"
+	booking.Status = models.StatusChanged
 	booking.Version++
-	b.publishBookingEvent(events.EventBookingItemChange, *booking, "manager", callback.From.ID)
+	b.publishBookingEvent(ctx, events.EventBookingItemChange, *booking, "manager", callback.From.ID)
 
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
@@ -797,11 +806,11 @@ func (b *Bot) handleChangeItem(ctx context.Context, update tgbotapi.Update) {
 // sendManagerBookingDetail отправляет детали заявки в указанный чат (без использования update)
 func (b *Bot) sendManagerBookingDetail(ctx context.Context, chatID int64, booking *models.Booking) {
 	statusText := map[string]string{
-		"pending":   "⏳ Ожидает подтверждения",
-		"confirmed": "✅ Подтверждена",
-		"cancelled": "❌ Отменена",
-		"changed":   "🔄 Изменена",
-		"completed": "🏁 Завершена",
+		models.StatusPending:   "⏳ Ожидает подтверждения",
+		models.StatusConfirmed: "✅ Подтверждена",
+		models.StatusCancelled: "❌ Отменена",
+		models.StatusChanged:   "🔄 Изменена",
+		models.StatusCompleted: "🏁 Завершена",
 	}
 
 	message := fmt.Sprintf(`📋 Заявка #%d
@@ -828,14 +837,14 @@ func (b *Bot) sendManagerBookingDetail(ctx context.Context, chatID int64, bookin
 	// Создаем инлайн-клавиатуру для управления заявкой
 	var rows [][]tgbotapi.InlineKeyboardButton
 
-	if booking.Status == "pending" || booking.Status == "changed" {
+	if booking.Status == models.StatusPending || booking.Status == models.StatusChanged {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Подтвердить", fmt.Sprintf("confirm_%d", booking.ID)),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отклонить", fmt.Sprintf("reject_%d", booking.ID)),
 		))
 	}
 
-	if booking.Status == "confirmed" {
+	if booking.Status == models.StatusConfirmed {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Вернуть в работу", fmt.Sprintf("reopen_%d", booking.ID)),
 			tgbotapi.NewInlineKeyboardButtonData("🏁 Завершить", fmt.Sprintf("complete_%d", booking.ID)),
@@ -860,7 +869,7 @@ func (b *Bot) sendManagerBookingDetail(ctx context.Context, chatID int64, bookin
 
 // reopenBooking возврат заявки в работу
 func (b *Bot) reopenBooking(ctx context.Context, booking *models.Booking, managerChatID int64) {
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, "pending")
+	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusPending)
 	if err != nil {
 		if err == database.ErrConcurrentModification {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
@@ -871,7 +880,7 @@ func (b *Bot) reopenBooking(ctx context.Context, booking *models.Booking, manage
 	}
 
 	booking.Version++
-	booking.Status = "pending"
+	booking.Status = models.StatusPending
 
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
@@ -1056,7 +1065,7 @@ func (b *Bot) refreshItemsFromDB(ctx context.Context) {
 
 // completeBooking завершение заявки
 func (b *Bot) completeBooking(ctx context.Context, booking *models.Booking, managerChatID int64) {
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, "completed")
+	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusCompleted)
 	if err != nil {
 		if err == database.ErrConcurrentModification {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
@@ -1067,10 +1076,10 @@ func (b *Bot) completeBooking(ctx context.Context, booking *models.Booking, mana
 	}
 
 	booking.Version++
-	booking.Status = "completed"
+	booking.Status = models.StatusCompleted
 
-	booking.Status = "completed"
-	b.publishBookingEvent(events.EventBookingCompleted, *booking, "manager", managerChatID)
+	booking.Status = models.StatusCompleted
+	b.publishBookingEvent(ctx, events.EventBookingCompleted, *booking, "manager", managerChatID)
 
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
@@ -1091,9 +1100,9 @@ func (b *Bot) SyncScheduleToSheets(ctx context.Context) {
 		return
 	}
 
-	// Определяем период: один месяц назад и два месяца вперед
-	startDate := time.Now().AddDate(0, -1, 0).Truncate(24 * time.Hour)
-	endDate := time.Now().AddDate(0, 2, 0).Truncate(24 * time.Hour)
+	// Определяем период
+	startDate := time.Now().AddDate(0, -models.DefaultExportRangeMonthsBefore, 0).Truncate(24 * time.Hour)
+	endDate := time.Now().AddDate(0, models.DefaultExportRangeMonthsAfter, 0).Truncate(24 * time.Hour)
 
 	b.logger.Info().
 		Time("start_date", startDate).
@@ -1163,7 +1172,7 @@ func (b *Bot) SyncScheduleToSheets(ctx context.Context) {
 
 // confirmBooking подтверждение бронирования менеджером
 func (b *Bot) confirmBooking(ctx context.Context, booking *models.Booking, managerChatID int64) {
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, "confirmed")
+	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusConfirmed)
 	if err != nil {
 		if err == database.ErrConcurrentModification {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
@@ -1174,10 +1183,10 @@ func (b *Bot) confirmBooking(ctx context.Context, booking *models.Booking, manag
 	}
 
 	booking.Version++
-	booking.Status = "confirmed"
+	booking.Status = models.StatusConfirmed
 
-	booking.Status = "confirmed"
-	b.publishBookingEvent(events.EventBookingConfirmed, *booking, "manager", managerChatID)
+	booking.Status = models.StatusConfirmed
+	b.publishBookingEvent(ctx, events.EventBookingConfirmed, *booking, "manager", managerChatID)
 
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
@@ -1195,7 +1204,7 @@ func (b *Bot) confirmBooking(ctx context.Context, booking *models.Booking, manag
 
 // rejectBooking отклонение бронирования менеджером
 func (b *Bot) rejectBooking(ctx context.Context, booking *models.Booking, managerChatID int64) {
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, "cancelled")
+	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusCancelled)
 	if err != nil {
 		if err == database.ErrConcurrentModification {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
@@ -1206,10 +1215,10 @@ func (b *Bot) rejectBooking(ctx context.Context, booking *models.Booking, manage
 	}
 
 	booking.Version++
-	booking.Status = "cancelled"
+	booking.Status = models.StatusCancelled
 
-	booking.Status = "cancelled"
-	b.publishBookingEvent(events.EventBookingCancelled, *booking, "manager", managerChatID)
+	booking.Status = models.StatusCancelled
+	b.publishBookingEvent(ctx, events.EventBookingCancelled, *booking, "manager", managerChatID)
 
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
@@ -1416,27 +1425,195 @@ func (b *Bot) handleCallButton(ctx context.Context, update tgbotapi.Update) {
 	b.bot.Send(msg)
 }
 
-// formatPhoneForDisplay форматирует номер телефона для красивого отображения
-func (b *Bot) formatPhoneForDisplay(phone string) string {
-	// Убираем все нецифровые символы
-	cleaned := ""
-	for _, char := range phone {
-		if char >= '0' && char <= '9' {
-			cleaned += string(char)
-		}
-	}
+// getUserStats показывает статистику менеджеру
+func (b *Bot) getUserStats(ctx context.Context, update tgbotapi.Update) {
+if !b.isManager(update.Message.From.ID) {
+return
+}
 
-	// Форматируем в зависимости от длины
-	if len(cleaned) == 11 && cleaned[0] == '7' {
-		// Российский номер: +7 (XXX) XXX-XX-XX
-		return fmt.Sprintf("+7 (%s) %s-%s-%s",
-			cleaned[1:4], cleaned[4:7], cleaned[7:9], cleaned[9:])
-	} else if len(cleaned) == 10 {
-		// Номер без кода страны: (XXX) XXX-XX-XX
-		return fmt.Sprintf("(%s) %s-%s-%s",
-			cleaned[0:3], cleaned[3:6], cleaned[6:8], cleaned[8:])
-	}
+allUsers, err := b.db.GetAllUsers(ctx)
+if err != nil {
+b.logger.Error().Err(err).Msg("Error getting all users")
+b.sendMessage(update.Message.Chat.ID, "Ошибка при получении данных")
+return
+}
 
-	// Возвращаем исходный номер, если форматирование не применимо
-	return phone
+activeUsers, _ := b.db.GetActiveUsers(ctx, 30)
+managers, _ := b.db.GetUsersByManagerStatus(ctx, true)
+
+blacklistedCount := 0
+for _, user := range allUsers {
+if user.IsBlacklisted {
+blacklistedCount++
+}
+}
+
+// Формируем сообщение со статистикой
+var message strings.Builder
+message.WriteString("📊 *Статистика*\n\n")
+
+// Пользователи
+message.WriteString("👥 *Пользователи*\n")
+message.WriteString(fmt.Sprintf("Всего: *%d*\n", len(allUsers)))
+message.WriteString(fmt.Sprintf("Активных (30д): *%d*\n", len(activeUsers)))
+message.WriteString(fmt.Sprintf("Менеджеров: *%d*\n", len(managers)))
+message.WriteString(fmt.Sprintf("В черном списке: *%d*\n\n", blacklistedCount))
+
+message.WriteString("Последние пользователи:\n")
+count := 5
+if len(allUsers) < count {
+count = len(allUsers)
+}
+for i := 0; i < count; i++ {
+user := allUsers[i]
+emoji := "👤"
+if user.IsManager {
+emoji = "👨‍💼"
+} else if user.IsBlacklisted {
+emoji = "🚫"
+}
+
+message.WriteString(fmt.Sprintf("%s %s %s - %s\n",
+emoji,
+user.FirstName,
+user.LastName,
+user.LastActivity.Format("02.01.2006")))
+}
+message.WriteString("\n")
+
+// Бронирования
+now := time.Now()
+today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+periods := []struct {
+label string
+start time.Time
+end   time.Time
+}{
+{"Сегодня", today, today},
+{"7 дней", today.AddDate(0, 0, -6), today},
+{"30 дней", today.AddDate(0, 0, -29), today},
+}
+
+message.WriteString("📅 *Бронирования*\n")
+for _, p := range periods {
+summary := b.bookingSummary(ctx, p.start, p.end)
+message.WriteString(fmt.Sprintf("%s: %s\n", p.label, summary))
+}
+
+msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
+msg.ParseMode = "Markdown"
+
+keyboard := tgbotapi.NewInlineKeyboardMarkup(
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("📤 Экспорт пользователей", "export_users"),
+),
+)
+msg.ReplyMarkup = &keyboard
+
+b.bot.Send(msg)
+}
+
+// bookingSummary агрегирует заявки за период в компактный блок: всего, статусы, топ-товары.
+func (b *Bot) bookingSummary(ctx context.Context, startDate, endDate time.Time) string {
+bookings, err := b.db.GetBookingsByDateRange(ctx, startDate, endDate)
+if err != nil {
+b.logger.Error().Err(err).Msg("bookingSummary error")
+return "ошибка"
+}
+
+if len(bookings) == 0 {
+return "нет данных"
+}
+
+statusCount := map[string]int{}
+itemCount := map[string]int{}
+
+for _, bk := range bookings {
+statusCount[bk.Status]++
+itemCount[bk.ItemName]++
+}
+
+statusOrder := []string{models.StatusPending, models.StatusConfirmed, models.StatusChanged, models.StatusCompleted, models.StatusCancelled}
+var statusParts []string
+for _, st := range statusOrder {
+if c := statusCount[st]; c > 0 {
+statusParts = append(statusParts, fmt.Sprintf("%s:%d", st, c))
+}
+}
+
+type kv struct {
+name  string
+count int
+}
+var items []kv
+for name, c := range itemCount {
+items = append(items, kv{name: name, count: c})
+}
+sort.Slice(items, func(i, j int) bool {
+if items[i].count == items[j].count {
+return items[i].name < items[j].name
+}
+return items[i].count > items[j].count
+})
+if len(items) > 3 {
+items = items[:3]
+}
+var itemParts []string
+for _, it := range items {
+itemParts = append(itemParts, fmt.Sprintf("%s:%d", it.name, it.count))
+}
+
+return fmt.Sprintf("всего %d | статусы [%s] | топ [%s]",
+len(bookings),
+strings.Join(statusParts, ", "),
+strings.Join(itemParts, ", "),
+)
+}
+
+// handleExportUsers обработка экспорта пользователей
+func (b *Bot) handleExportUsers(ctx context.Context, update tgbotapi.Update) {
+callback := update.CallbackQuery
+if callback == nil || !b.isManager(callback.From.ID) {
+return
+}
+
+users, err := b.db.GetAllUsers(ctx)
+if err != nil {
+b.logger.Error().Err(err).Msg("Error getting users for export")
+b.sendMessage(callback.Message.Chat.ID, "Ошибка при получении данных пользователей")
+return
+}
+
+filePath, err := b.exportUsersToExcel(ctx, users)
+if err != nil {
+b.logger.Error().Err(err).Msg("Error exporting users to Excel")
+b.sendMessage(callback.Message.Chat.ID, "Ошибка при создании файла экспорта")
+return
+}
+
+// Отправляем файл
+file, err := os.Open(filePath)
+if err != nil {
+b.logger.Error().Err(err).Str("file_path", filePath).Msg("Error opening file")
+b.sendMessage(callback.Message.Chat.ID, "Ошибка при открытии файла")
+return
+}
+defer file.Close()
+
+fileReader := tgbotapi.FileReader{
+Name:   filepath.Base(filePath),
+Reader: file,
+}
+
+doc := tgbotapi.NewDocument(callback.Message.Chat.ID, fileReader)
+doc.Caption = "📊 Экспорт данных пользователей"
+
+_, err = b.bot.Send(doc)
+if err != nil {
+b.logger.Error().Err(err).Msg("Error sending document")
+b.sendMessage(callback.Message.Chat.ID, "Ошибка при отправке файла")
+return
+}
+
+b.sendMessage(callback.Message.Chat.ID, "✅ Файл с пользователями успешно отправлен")
 }

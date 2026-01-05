@@ -109,11 +109,11 @@ func (b *Bot) exportToExcel(ctx context.Context, startDate, endDate time.Time) (
 				for _, booking := range itemBookings {
 					status := "❓"
 					switch booking.Status {
-					case "confirmed", "completed":
+					case models.StatusConfirmed, models.StatusCompleted:
 						status = "✅"
-					case "pending", "changed":
+					case models.StatusPending, models.StatusChanged:
 						status = "⏳"
-					case "cancelled":
+					case models.StatusCancelled:
 						status = "❌"
 					}
 					cellValue += fmt.Sprintf("%s %s (%s)\n", status, booking.UserName, booking.Phone)
@@ -215,7 +215,7 @@ func (b *Bot) getCellStyle(f *excelize.File, itemBookings []models.Booking, book
 	// 3. Проверяем статусы активных заявок
 	hasUnconfirmed := false
 	for _, booking := range activeBookings {
-		if booking.Status == "pending" || booking.Status == "changed" {
+		if booking.Status == models.StatusPending || booking.Status == models.StatusChanged {
 			hasUnconfirmed = true
 			break
 		}
@@ -250,7 +250,7 @@ func (b *Bot) getCellStyle(f *excelize.File, itemBookings []models.Booking, book
 func (b *Bot) filterActiveBookings(bookings []models.Booking) []models.Booking {
 	var active []models.Booking
 	for _, booking := range bookings {
-		if booking.Status != "cancelled" {
+		if booking.Status != models.StatusCancelled {
 			active = append(active, booking)
 		}
 	}

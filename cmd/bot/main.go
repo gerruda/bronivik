@@ -21,6 +21,7 @@ import (
 	"bronivik/internal/service"
 	"bronivik/internal/worker"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v2"
 )
 
@@ -84,7 +85,7 @@ func main() {
 	}
 
 	// Инициализация базы данных
-	db, err := database.NewDB(cfg.Database.Path)
+	db, err := database.NewDB(cfg.Database.Path, &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Ошибка инициализации базы данных")
 	}
@@ -106,7 +107,7 @@ func main() {
 		logger.Fatal().Msg("Нехватает переменных для подключения к Гуглу")
 	}
 
-	service, err := google.NewSimpleSheetsService(
+	sheetsSvc, err := google.NewSimpleSheetsService(
 		cfg.Google.GoogleCredentialsFile,
 		cfg.Google.UsersSpreadSheetId,
 		cfg.Google.BookingSpreadSheetId,
@@ -116,10 +117,10 @@ func main() {
 	}
 
 	// Тестируем подключение
-	if err := service.TestConnection(); err != nil {
+	if err := sheetsSvc.TestConnection(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("Google Sheets connection test failed")
 	} else {
-		sheetsService = service
+		sheetsService = sheetsSvc
 		logger.Info().Msg("Google Sheets service initialized successfully")
 	}
 
@@ -133,7 +134,7 @@ func main() {
 	}
 
 	// Инициализация сервиса состояний
-	stateRepo := repository.NewRedisStateRepository(redisClient, 24*time.Hour)
+	stateRepo := repository.NewRedisStateRepository(redisClient, time.Duration(models.DefaultRedisTTL)*time.Second)
 	stateService := service.NewStateService(stateRepo, &logger)
 
 	// Запускаем воркер синхронизации Google Sheets

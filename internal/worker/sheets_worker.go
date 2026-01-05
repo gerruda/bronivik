@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"os"
 	"time"
 
 	"bronivik/internal/database"
 	"bronivik/internal/models"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -52,11 +53,11 @@ type SheetsWorker struct {
 	deadLetterKey string
 	pollInterval  time.Duration
 	batchSize     int
-	logger        *log.Logger
+	logger        *zerolog.Logger
 }
 
 // NewSheetsWorker builds a worker with sane defaults.
-func NewSheetsWorker(db *database.DB, sheets SheetsClient, redisClient *redis.Client, retry RetryPolicy, logger *log.Logger) *SheetsWorker {
+func NewSheetsWorker(db *database.DB, sheets SheetsClient, redisClient *redis.Client, retry RetryPolicy, logger *zerolog.Logger) *SheetsWorker {
 	if retry.MaxRetries == 0 {
 		retry.MaxRetries = 5
 	}
@@ -70,7 +71,8 @@ func NewSheetsWorker(db *database.DB, sheets SheetsClient, redisClient *redis.Cl
 		retry.BackoffFactor = 2
 	}
 	if logger == nil {
-		logger = log.Default()
+		l := zerolog.New(os.Stdout).With().Timestamp().Logger()
+		logger = &l
 	}
 
 	return &SheetsWorker{
@@ -125,7 +127,7 @@ func (w *SheetsWorker) EnqueueTask(ctx context.Context, task SheetTask) error {
 	// Try redis first for durability.
 	if w.redis != nil {
 		if err := w.pushRedis(ctx, syncTask); err != nil {
-			w.logger.Printf("sheets_worker: redis push failed, fallback to memory queue: %v", err)
+			w.logger.Warn().Err(err).Msg("sheets_worker: redis push failed, fallback to memory queue")
 		} else {
 			return nil
 		}
@@ -135,7 +137,7 @@ func (w *SheetsWorker) EnqueueTask(ctx context.Context, task SheetTask) error {
 	select {
 	case w.queue <- syncTask:
 	default:
-		w.logger.Printf("sheets_worker: in-memory queue full, task %d dropped to polling", syncTask.ID)
+		w.logger.Warn().Int64("task_id", syncTask.ID).Msg("sheets_worker: in-memory queue full, task dropped to polling")
 	}
 
 	return nil
@@ -143,8 +145,8 @@ func (w *SheetsWorker) EnqueueTask(ctx context.Context, task SheetTask) error {
 
 // Start launches main loop; stops when ctx is done.
 func (w *SheetsWorker) Start(ctx context.Context) {
-	w.logger.Printf("sheets_worker: started")
-	defer w.logger.Printf("sheets_worker: stopped")
+	w.logger.Info().Msg("sheets_worker: started")
+	defer w.logger.Info().Msg("sheets_worker: stopped")
 
 	for {
 		select {
@@ -165,7 +167,7 @@ func (w *SheetsWorker) Start(ctx context.Context) {
 
 		tasks, err := w.db.GetPendingSyncTasks(ctx, w.batchSize)
 		if err != nil {
-			w.logger.Printf("sheets_worker: fetch pending: %v", err)
+			w.logger.Error().Err(err).Msg("sheets_worker: fetch pending")
 			time.Sleep(w.pollInterval)
 			continue
 		}
@@ -198,7 +200,7 @@ func (w *SheetsWorker) tryRedis(ctx context.Context) (models.SyncTask, bool) {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, redis.Nil) {
 			return models.SyncTask{}, false
 		}
-		w.logger.Printf("sheets_worker: redis BRPOP error: %v", err)
+		w.logger.Error().Err(err).Msg("sheets_worker: redis BRPOP error")
 		return models.SyncTask{}, false
 	}
 	if len(res) != 2 {
@@ -206,7 +208,7 @@ func (w *SheetsWorker) tryRedis(ctx context.Context) (models.SyncTask, bool) {
 	}
 	var task models.SyncTask
 	if err := json.Unmarshal([]byte(res[1]), &task); err != nil {
-		w.logger.Printf("sheets_worker: decode redis task: %v", err)
+		w.logger.Error().Err(err).Msg("sheets_worker: decode redis task")
 		return models.SyncTask{}, false
 	}
 	return task, true
@@ -225,7 +227,7 @@ func (w *SheetsWorker) processTask(ctx context.Context, task *models.SyncTask) {
 	}
 
 	if err := w.db.UpdateSyncTaskStatus(ctx, task.ID, "completed", "", nil); err != nil {
-		w.logger.Printf("sheets_worker: mark completed %d: %v", task.ID, err)
+		w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: mark completed")
 	}
 }
 
@@ -255,7 +257,7 @@ func (w *SheetsWorker) retryOrFail(ctx context.Context, task *models.SyncTask, c
 	attempt := task.RetryCount + 1
 	if attempt >= w.retryPolicy.MaxRetries {
 		if err := w.db.UpdateSyncTaskStatus(ctx, task.ID, "failed", cause.Error(), nil); err != nil {
-			w.logger.Printf("sheets_worker: mark failed %d: %v", task.ID, err)
+			w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: mark failed")
 		}
 		w.pushDeadLetter(ctx, task)
 		return
@@ -264,13 +266,13 @@ func (w *SheetsWorker) retryOrFail(ctx context.Context, task *models.SyncTask, c
 	nextDelay := w.retryPolicy.NextDelay(attempt)
 	nextTime := time.Now().Add(nextDelay)
 	if err := w.db.UpdateSyncTaskStatus(ctx, task.ID, "retry", cause.Error(), &nextTime); err != nil {
-		w.logger.Printf("sheets_worker: mark retry %d: %v", task.ID, err)
+		w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: mark retry")
 	}
 }
 
 func (w *SheetsWorker) failTask(ctx context.Context, task *models.SyncTask, err error) {
 	if err := w.db.UpdateSyncTaskStatus(ctx, task.ID, "failed", err.Error(), nil); err != nil {
-		w.logger.Printf("sheets_worker: mark failed %d: %v", task.ID, err)
+		w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: mark failed")
 	}
 	w.pushDeadLetter(ctx, task)
 }
@@ -300,10 +302,10 @@ func (w *SheetsWorker) pushDeadLetter(ctx context.Context, task *models.SyncTask
 	}
 	data, err := json.Marshal(task)
 	if err != nil {
-		w.logger.Printf("sheets_worker: encode deadletter %d: %v", task.ID, err)
+		w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: encode deadletter")
 		return
 	}
 	if err := w.redis.LPush(ctx, w.deadLetterKey, data).Err(); err != nil {
-		w.logger.Printf("sheets_worker: deadletter push %d: %v", task.ID, err)
+		w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: deadletter push")
 	}
 }

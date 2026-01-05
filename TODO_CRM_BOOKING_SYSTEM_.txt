@@ -1071,27 +1071,21 @@ bronivik_crm/
 
 ## 5.1 Критические проблемы (исправить немедленно)
 
-### 5.1.1 Race condition в userStates
-- [ ] **internal/bot/handler.go: userStates map не защищен mutex**
+### 5.1.1 Race condition в userStates [DONE]
+- [x] **internal/bot/handler.go: userStates map не защищен mutex**
   - Проблема: Одновременный доступ к `map[int64]*UserState` может вызвать panic
   - Решение: Использовать `sync.Map` или добавить `sync.RWMutex`
-  ```go
-  type Bot struct {
-      userStatesMu sync.RWMutex
-      userStates   map[int64]*models.UserState
-  }
-  ```
 
-### 5.1.2 Дубликаты ID в configs/items.yaml
-- [ ] **Исправить дублирующиеся ID элементов**
+### 5.1.2 Дубликаты ID в configs/items.yaml [DONE]
+- [x] **Исправить дублирующиеся ID элементов**
   - ID 8: УФ СЕРЕБРИСТЫЙ, УФ СИНИЙ
   - ID 14: УФ ЧЕРНЫЙ, УФ ЗЕЛЕНЫЙ, MPT
   - ID 16: Скарлет белый, Скарлет белый мамонтенок
   - ID 46: Accent, Accent Prime
   - Решение: Назначить уникальные ID
 
-### 5.1.3 Потеря состояния пользователя при перезапуске
-- [ ] **Сохранять userStates в Redis/DB**
+### 5.1.3 Потеря состояния пользователя при перезапуске [DONE]
+- [x] **Сохранять userStates в Redis/DB**
   - При перезапуске бота все пользователи теряют состояние
   - Решение: Сериализация состояния в Redis с TTL
 
@@ -1109,23 +1103,25 @@ bronivik_crm/
 - [ ] **internal/database/database.go — 900+ строк**
   - Разбить на: users.go, bookings.go, items.go, sync_queue.go
 
-### 5.2.2 Вынести константы
-- [ ] **Создать internal/models/status.go**
-  ```go
-  const (
-      StatusPending   = "pending"
-      StatusConfirmed = "confirmed"
-      StatusCancelled = "cancelled"
-      StatusChanged   = "changed"
-      StatusCompleted = "completed"
-  )
-  ```
-- [ ] **Вынести магические числа**
-  - Размер пагинации (сейчас захардкожен 5/10)
-  - Время напоминания (сейчас 09:00)
+### 5.2.2 Вынести константы [DONE]
+- [x] **Создать internal/models/constants.go** (бывший status.go)
+- [x] **Вынести магические числа**
+  - Размер пагинации
+  - Время напоминания (09:00)
+  - Redis TTL (24h)
+  - Периоды экспорта (1 мес назад, 2 мес вперед)
   - Размер канала воркера (сейчас 1000)
 
-### 5.2.3 Устранить дублирование кода
+### 5.2.3 Модуляризация бота [DONE]
+- [x] **Разбить internal/bot/handler.go на модули**
+  - bot.go (структура и запуск)
+  - user_handlers.go (обработка сообщений пользователей)
+  - callback_handlers.go (обработка инлайн-кнопок)
+  - sync.go (синхронизация с Google Sheets)
+  - manager.go (логика менеджера)
+  - utils.go (вспомогательные функции)
+
+### 5.2.4 Устранить дублирование кода
 - [ ] **Пагинация в manager.go**
   - `sendItemsPage`, `sendManagerItemsPage`, `sendScheduleItemsPage` — почти идентичны
   - Решение: Создать generic pagination component
@@ -1261,19 +1257,8 @@ bronivik_crm/
 
 ## 5.7 Конфигурация (средний приоритет)
 
-### 5.7.1 Валидация конфига
-- [ ] **internal/config/config.go: добавить Validate()**
-  ```go
-  func (c *Config) Validate() error {
-      if c.Telegram.BotToken == "" {
-          return fmt.Errorf("telegram.bot_token is required")
-      }
-      if c.API.HTTP.Port < 1 || c.API.HTTP.Port > 65535 {
-          return fmt.Errorf("invalid http port: %d", c.API.HTTP.Port)
-      }
-      // ... другие проверки
-  }
-  ```
+### 5.7.1 Валидация конфига [DONE]
+- [x] **internal/config/config.go: добавить Validate()**
 
 ### 5.7.2 Конфигурируемые параметры
 - [ ] **Вынести в конфиг**

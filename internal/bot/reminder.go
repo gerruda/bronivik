@@ -16,7 +16,7 @@ func (b *Bot) StartReminders(ctx context.Context) {
 
 	go func() {
 		// First wait until next 09:00 local time, then tick every 24h.
-		wait := timeUntilNextHour(9)
+		wait := timeUntilNextHour(models.ReminderHour)
 		timer := time.NewTimer(wait)
 		defer timer.Stop()
 
@@ -66,7 +66,7 @@ func (b *Bot) sendTomorrowReminders(ctx context.Context) {
 
 func shouldRemindStatus(status string) bool {
 	switch status {
-	case "pending", "confirmed", "changed":
+	case models.StatusPending, models.StatusConfirmed, models.StatusChanged:
 		return true
 	default:
 		return false
