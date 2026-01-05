@@ -175,42 +175,6 @@ func (b *Bot) showUserBookings(ctx context.Context, update tgbotapi.Update) {
 	b.sendMessage(update.Message.Chat.ID, message.String())
 }
 
-// Обновляем handlePersonalData - добавляем запрос имени
-func (b *Bot) handlePersonalData(ctx context.Context, update tgbotapi.Update, itemID int64, date time.Time) {
-	state := b.getUserState(ctx, update.Message.From.ID)
-	if state == nil {
-		state = &models.UserState{
-			UserID:   update.Message.From.ID,
-			TempData: make(map[string]interface{}),
-		}
-	}
-
-	state.TempData["item_id"] = itemID
-	state.TempData["date"] = date
-	b.setUserState(ctx, update.Message.From.ID, models.StatePersonalData, state.TempData)
-
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-		`Для оформления заявки необходимо ваше согласие на обработку персональных данных.
-        
-Мы обязуемся использовать ваши данные исключительно для обработки заявки и связи с вами.`)
-
-	keyboard := tgbotapi.NewReplyKeyboard(
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("✅ Даю согласие"),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📞 Контакты менеджеров"),
-			tgbotapi.NewKeyboardButton("❌ Отмена"),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("⬅️ Назад"),
-		),
-	)
-	msg.ReplyMarkup = keyboard
-
-	b.tgService.Send(msg)
-}
-
 // Добавляем метод для запроса имени
 func (b *Bot) handleNameRequest(ctx context.Context, update tgbotapi.Update) {
 	b.debugState(ctx, update.Message.From.ID, "handleNameRequest START")
@@ -343,7 +307,7 @@ func (b *Bot) handleContactReceived(ctx context.Context, update tgbotapi.Update)
 		return
 	}
 
-	if state.CurrentStep == StatePhoneNumber {
+	if state.CurrentStep == models.StatePhoneNumber {
 		b.handlePhoneReceived(ctx, update, update.Message.Contact.PhoneNumber)
 	}
 }
@@ -651,7 +615,6 @@ func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateS
 	b.debugState(ctx, update.Message.From.ID, "handleDateInput END")
 
 	// Переходим к запросу персональных данных
-	// b.handlePersonalData(ctx, update, item.ID, date)
 	b.handleNameRequest(ctx, update)
 }
 

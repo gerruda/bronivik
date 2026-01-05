@@ -57,5 +57,3 @@ func (b *Bot) SyncBookingsToSheets(ctx context.Context) {
 	// Также синхронизируем расписание
 	b.SyncScheduleToSheets(ctx)
 }
-
-// AppendBookingToSheets добавляет одно бронирование в Google Sheets
