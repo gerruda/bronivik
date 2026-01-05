@@ -11,6 +11,7 @@ import (
 
 	"bronivik/bronivik_crm/internal/api"
 	"bronivik/bronivik_crm/internal/models"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -21,6 +22,54 @@ var (
 // DB wraps sql.DB for the CRM bot.
 type DB struct {
 	*sql.DB
+}
+
+// --- Users CRUD ---
+
+// GetOrCreateUserByTelegramID ensures a user row exists for given telegram id.
+func (db *DB) GetOrCreateUserByTelegramID(ctx context.Context, telegramID int64, username, firstName, lastName string) (*models.User, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	u, err := getUserByTelegramIDTx(ctx, tx, telegramID)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	now := time.Now()
+	if err == sql.ErrNoRows {
+		res, err := tx.ExecContext(ctx, `INSERT INTO users (telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, created_at, updated_at)
+			VALUES (?, ?, ?, ?, '', 0, 0, ?, ?)`, telegramID, username, firstName, lastName, now, now)
+		if err != nil {
+			return nil, err
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		u = &models.User{ID: id, TelegramID: telegramID, Username: username, FirstName: firstName, LastName: lastName, CreatedAt: now, UpdatedAt: now}
+	} else {
+		// best-effort update of profile fields
+		_, _ = tx.ExecContext(ctx, `UPDATE users SET username = ?, first_name = ?, last_name = ?, updated_at = ? WHERE id = ?`, username, firstName, lastName, now, u.ID)
+		u.Username = username
+		u.FirstName = firstName
+		u.LastName = lastName
+		u.UpdatedAt = now
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+func getUserByTelegramIDTx(ctx context.Context, tx *sql.Tx, telegramID int64) (*models.User, error) {
+	row := tx.QueryRowContext(ctx, `SELECT id, telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, created_at, updated_at
+		FROM users WHERE telegram_id = ? LIMIT 1`, telegramID)
+	return scanUser(row)
 }
 
 // NewDB opens database at path and runs migrations.
@@ -96,6 +145,9 @@ func createTables(db *sql.DB) error {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             cabinet_id INTEGER NOT NULL,
+			item_name TEXT,
+			client_name TEXT,
+			client_phone TEXT,
             start_time DATETIME NOT NULL,
             end_time DATETIME NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
@@ -119,7 +171,65 @@ func createTables(db *sql.DB) error {
 			return fmt.Errorf("exec migration %s: %w", trimSQL(q), err)
 		}
 	}
+
+	if err := ensureHourlyBookingColumns(db); err != nil {
+		return err
+	}
 	return nil
+}
+
+func ensureHourlyBookingColumns(db *sql.DB) error {
+	cols, err := tableColumns(db, "hourly_bookings")
+	if err != nil {
+		return err
+	}
+	toAdd := []struct {
+		name string
+		typeDecl string
+	}{
+		{name: "item_name", typeDecl: "TEXT"},
+		{name: "client_name", typeDecl: "TEXT"},
+		{name: "client_phone", typeDecl: "TEXT"},
+	}
+
+	for _, c := range toAdd {
+		if cols[c.name] {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE hourly_bookings ADD COLUMN %s %s", c.name, c.typeDecl)); err != nil {
+			// SQLite returns error if column already exists (race / old db)
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+				continue
+			}
+			return fmt.Errorf("add column %s: %w", c.name, err)
+		}
+	}
+	return nil
+}
+
+func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid int
+			name string
+			typeDecl string
+			notnull int
+			dflt sql.NullString
+			pk int
+		)
+		if err := rows.Scan(&cid, &name, &typeDecl, &notnull, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
 }
 
 // --- Cabinets CRUD ---
@@ -219,8 +329,8 @@ func (db *DB) CreateHourlyBooking(ctx context.Context, b *models.HourlyBooking) 
 		return fmt.Errorf("booking is nil")
 	}
 	now := time.Now()
-	res, err := db.ExecContext(ctx, `INSERT INTO hourly_bookings (user_id, cabinet_id, start_time, end_time, status, comment, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, b.UserID, b.CabinetID, b.StartTime, b.EndTime, b.Status, b.Comment, now, now)
+	res, err := db.ExecContext(ctx, `INSERT INTO hourly_bookings (user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, b.UserID, b.CabinetID, b.ItemName, b.ClientName, b.ClientPhone, b.StartTime, b.EndTime, b.Status, b.Comment, now, now)
 	if err != nil {
 		return err
 	}
@@ -236,13 +346,13 @@ func (db *DB) CreateHourlyBooking(ctx context.Context, b *models.HourlyBooking) 
 
 // GetHourlyBooking returns booking by id.
 func (db *DB) GetHourlyBooking(ctx context.Context, id int64) (*models.HourlyBooking, error) {
-	row := db.QueryRowContext(ctx, `SELECT id, user_id, cabinet_id, start_time, end_time, status, comment, created_at, updated_at FROM hourly_bookings WHERE id = ?`, id)
+	row := db.QueryRowContext(ctx, `SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at FROM hourly_bookings WHERE id = ?`, id)
 	return scanHourly(row)
 }
 
 // ListHourlyBookingsByCabinet returns bookings for a cabinet within range.
 func (db *DB) ListHourlyBookingsByCabinet(ctx context.Context, cabinetID int64, from, to time.Time) ([]models.HourlyBooking, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, user_id, cabinet_id, start_time, end_time, status, comment, created_at, updated_at
+	rows, err := db.QueryContext(ctx, `SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at
         FROM hourly_bookings
         WHERE cabinet_id = ? AND start_time < ? AND end_time > ?
         ORDER BY start_time ASC`, cabinetID, to, from)
@@ -328,7 +438,7 @@ func (db *DB) GetAvailableSlots(ctx context.Context, cabinetID int64, date time.
 }
 
 // CreateHourlyBookingWithChecks checks slot and optional item availability before inserting.
-func (db *DB) CreateHourlyBookingWithChecks(ctx context.Context, booking *models.HourlyBooking, itemName string, client *api.BronivikClient) error {
+func (db *DB) CreateHourlyBookingWithChecks(ctx context.Context, booking *models.HourlyBooking, client *api.BronivikClient) error {
 	if booking == nil {
 		return fmt.Errorf("booking is nil")
 	}
@@ -349,17 +459,17 @@ func (db *DB) CreateHourlyBookingWithChecks(ctx context.Context, booking *models
 	}
 
 	// item availability via bronivik_jr API
-	if client != nil && itemName != "" {
+	if client != nil && booking.ItemName != "" {
 		dateStr := booking.StartTime.Format("2006-01-02")
-		avail, err := client.GetAvailability(ctx, itemName, dateStr)
+		avail, err := client.GetAvailability(ctx, booking.ItemName, dateStr)
 		if err != nil || avail == nil || !avail.Available {
 			return ErrItemNotAvailable
 		}
 	}
 
 	now := time.Now()
-	res, err := tx.ExecContext(ctx, `INSERT INTO hourly_bookings (user_id, cabinet_id, start_time, end_time, status, comment, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, booking.UserID, booking.CabinetID, booking.StartTime, booking.EndTime, booking.Status, booking.Comment, now, now)
+	res, err := tx.ExecContext(ctx, `INSERT INTO hourly_bookings (user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, booking.UserID, booking.CabinetID, booking.ItemName, booking.ClientName, booking.ClientPhone, booking.StartTime, booking.EndTime, booking.Status, booking.Comment, now, now)
 	if err != nil {
 		return err
 	}
@@ -462,7 +572,7 @@ func combineDateTime(date time.Time, hm string) (time.Time, error) {
 
 func scanHourly(r rowScanner) (*models.HourlyBooking, error) {
 	var b models.HourlyBooking
-	if err := r.Scan(&b.ID, &b.UserID, &b.CabinetID, &b.StartTime, &b.EndTime, &b.Status, &b.Comment, &b.CreatedAt, &b.UpdatedAt); err != nil {
+	if err := r.Scan(&b.ID, &b.UserID, &b.CabinetID, &b.ItemName, &b.ClientName, &b.ClientPhone, &b.StartTime, &b.EndTime, &b.Status, &b.Comment, &b.CreatedAt, &b.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &b, nil
@@ -523,6 +633,14 @@ func scanCabinet(r rowScanner) (*models.Cabinet, error) {
 		return nil, err
 	}
 	return &c, nil
+}
+
+func scanUser(r rowScanner) (*models.User, error) {
+	var u models.User
+	if err := r.Scan(&u.ID, &u.TelegramID, &u.Username, &u.FirstName, &u.LastName, &u.Phone, &u.IsManager, &u.IsBlacklisted, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 func scanSchedule(r rowScanner) (*models.CabinetSchedule, error) {
