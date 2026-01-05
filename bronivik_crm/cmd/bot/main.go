@@ -15,8 +15,10 @@ import (
 	"bronivik/bronivik_crm/internal/bot"
 	"bronivik/bronivik_crm/internal/database"
 	"bronivik/bronivik_crm/internal/metrics"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )
 
@@ -58,6 +60,10 @@ type Config struct {
 }
 
 func main() {
+	// Initialize logger
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	logger := zerolog.New(output).With().Timestamp().Logger()
+
 	configPath := os.Getenv("CRM_CONFIG_PATH")
 	if configPath == "" {
 		configPath = "configs/config.yaml"
@@ -65,25 +71,25 @@ func main() {
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatalf("read config: %v", err)
+		logger.Fatal().Err(err).Msg("read config error")
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		log.Fatalf("parse config: %v", err)
+		logger.Fatal().Err(err).Msg("parse config error")
 	}
 	if cfg.Telegram.BotToken == "" || cfg.Telegram.BotToken == "YOUR_BOT_TOKEN_HERE" {
-		log.Fatal("set telegram.bot_token in config")
+		logger.Fatal().Msg("set telegram.bot_token in config")
 	}
 	if cfg.Database.Path == "" {
 		cfg.Database.Path = "data/bronivik_crm.db"
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.Database.Path), 0o755); err != nil {
-		log.Fatalf("mkdir db dir: %v", err)
+		logger.Fatal().Err(err).Msg("mkdir db dir error")
 	}
 
 	db, err := database.NewDB(cfg.Database.Path)
 	if err != nil {
-		log.Fatalf("open db: %v", err)
+		logger.Fatal().Err(err).Msg("open db error")
 	}
 	defer db.Close()
 
@@ -95,9 +101,9 @@ func main() {
 	}
 
 	rules := botRulesFromConfig(cfg)
-	b, err := bot.New(cfg.Telegram.BotToken, client, db, cfg.Managers, rules)
+	b, err := bot.New(cfg.Telegram.BotToken, client, db, cfg.Managers, rules, &logger)
 	if err != nil {
-		log.Fatalf("create bot: %v", err)
+		logger.Fatal().Err(err).Msg("create bot error")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -106,17 +112,17 @@ func main() {
 	if cfg.Monitoring.HealthCheckPort == 0 {
 		cfg.Monitoring.HealthCheckPort = 8090
 	}
-	go startHealthServer(ctx, cfg.Monitoring.HealthCheckPort, db, rdb)
+	go startHealthServer(ctx, cfg.Monitoring.HealthCheckPort, db, rdb, &logger)
 
 	if cfg.Monitoring.PrometheusEnabled {
 		if cfg.Monitoring.PrometheusPort == 0 {
 			cfg.Monitoring.PrometheusPort = 9090
 		}
 		metrics.Register()
-		go startMetricsServer(ctx, cfg.Monitoring.PrometheusPort)
+		go startMetricsServer(ctx, cfg.Monitoring.PrometheusPort, &logger)
 	}
 
-	log.Println("CRM bot started")
+	logger.Info().Msg("CRM bot started")
 	b.Start(ctx)
 }
 
@@ -132,7 +138,7 @@ func botRulesFromConfig(cfg Config) bot.BookingRules {
 	return bot.BookingRules{MinAdvance: minAdvance, MaxAdvance: maxAdvance, MaxActivePerUser: cfg.Booking.MaxActivePerUser}
 }
 
-func startHealthServer(ctx context.Context, port int, db *database.DB, rdb *redis.Client) {
+func startHealthServer(ctx context.Context, port int, db *database.DB, rdb *redis.Client, logger *zerolog.Logger) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -163,11 +169,11 @@ func startHealthServer(ctx context.Context, port int, db *database.DB, rdb *redi
 		_ = srv.Shutdown(ctxShutdown)
 	}()
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Printf("health server error: %v", err)
+		logger.Error().Err(err).Msg("health server error")
 	}
 }
 
-func startMetricsServer(ctx context.Context, port int) {
+func startMetricsServer(ctx context.Context, port int, logger *zerolog.Logger) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
@@ -179,6 +185,6 @@ func startMetricsServer(ctx context.Context, port int) {
 		_ = srv.Shutdown(ctxShutdown)
 	}()
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Printf("metrics server error: %v", err)
+		logger.Error().Err(err).Msg("metrics server error")
 	}
 }

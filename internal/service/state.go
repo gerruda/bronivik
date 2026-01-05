@@ -2,25 +2,28 @@ package service
 
 import (
 	"context"
-	"log"
 
 	"bronivik/internal/domain"
+
+	"github.com/rs/zerolog"
 )
 
 type StateService struct {
 	stateRepo domain.StateRepository
+	logger    *zerolog.Logger
 }
 
-func NewStateService(stateRepo domain.StateRepository) *StateService {
+func NewStateService(stateRepo domain.StateRepository, logger *zerolog.Logger) *StateService {
 	return &StateService{
 		stateRepo: stateRepo,
+		logger:    logger,
 	}
 }
 
 func (s *StateService) GetUserState(ctx context.Context, userID int64) (*domain.UserState, error) {
 	state, err := s.stateRepo.GetState(ctx, userID)
 	if err != nil {
-		log.Printf("Error getting state for user %d: %v", userID, err)
+		s.logger.Error().Err(err).Int64("user_id", userID).Msg("failed to get user state")
 		return nil, err
 	}
 

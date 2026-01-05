@@ -5,19 +5,21 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"bronivik/internal/models"
+
+	"github.com/rs/zerolog"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type DB struct {
 	*sql.DB
-	items map[int64]models.Item
+	items  map[int64]models.Item
+	logger *zerolog.Logger
 }
 
 var (
@@ -25,7 +27,7 @@ var (
 	ErrNotAvailable           = errors.New("not available")
 )
 
-func NewDB(path string) (*DB, error) {
+func NewDB(path string, logger *zerolog.Logger) (*DB, error) {
 	// Создаем директорию для БД, если её нет
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -47,8 +49,8 @@ func NewDB(path string) (*DB, error) {
 		return nil, fmt.Errorf("failed to create tables: %v", err)
 	}
 
-	log.Printf("База данных инициализирована: %s", path)
-	return &DB{db, make(map[int64]models.Item)}, nil
+	logger.Info().Str("path", path).Msg("Database initialized")
+	return &DB{db, make(map[int64]models.Item), logger}, nil
 }
 
 func createTables(db *sql.DB) error {
@@ -554,7 +556,7 @@ func (db *DB) GetBookingsByDateRange(ctx context.Context, startDate, endDate tim
 		startDate.Format("2006-01-02"),
 		endDate.Format("2006-01-02"))
 	if err != nil {
-		log.Printf("Ошибка в GetBookingsByDateRange: %v", err)
+		db.logger.Error().Err(err).Msg("Error in GetBookingsByDateRange")
 		return nil, err
 	}
 	defer rows.Close()
@@ -579,21 +581,21 @@ func (db *DB) GetBookingsByDateRange(ctx context.Context, startDate, endDate tim
 			&booking.Version,
 		)
 		if err != nil {
-			log.Printf("Ошибка при сканировании строки %d: %v", count, err)
+			db.logger.Error().Err(err).Int("row_count", count).Msg("Error scanning row")
 			return nil, err
 		}
 		bookings = append(bookings, booking)
 		count++
 	}
 
-	log.Printf("Прочитано %d заявок", count)
+	db.logger.Debug().Int("count", count).Msg("Read bookings")
 
 	if err = rows.Err(); err != nil {
-		log.Printf("Ошибка rows.Err(): %v", err)
+		db.logger.Error().Err(err).Msg("Error rows.Err()")
 		return nil, err
 	}
 
-	log.Printf("Возвращаем %d заявок", len(bookings))
+	db.logger.Debug().Int("count", len(bookings)).Msg("Returning bookings")
 	return bookings, nil
 }
 

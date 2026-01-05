@@ -134,7 +134,7 @@ func main() {
 
 	// Инициализация сервиса состояний
 	stateRepo := repository.NewRedisStateRepository(redisClient, 24*time.Hour)
-	stateService := service.NewStateService(stateRepo)
+	stateService := service.NewStateService(stateRepo, &logger)
 
 	// Запускаем воркер синхронизации Google Sheets
 	var sheetsWorker *worker.SheetsWorker

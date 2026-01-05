@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +12,10 @@ import (
 	"bronivik/bronivik_crm/internal/database"
 	"bronivik/bronivik_crm/internal/metrics"
 	"bronivik/bronivik_crm/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
 
 // Bot is a thin Telegram bot wrapper for CRM flow.
@@ -24,6 +26,7 @@ type Bot struct {
 	bot      *tgbotapi.BotAPI
 	state    *stateStore
 	rules    BookingRules
+	logger   *zerolog.Logger
 }
 
 var errActiveLimit = errors.New("active bookings limit reached")
@@ -34,7 +37,7 @@ type BookingRules struct {
 	MaxActivePerUser int
 }
 
-func New(token string, apiClient *crmapi.BronivikClient, db *database.DB, managers []int64, rules BookingRules) (*Bot, error) {
+func New(token string, apiClient *crmapi.BronivikClient, db *database.DB, managers []int64, rules BookingRules, logger *zerolog.Logger) (*Bot, error) {
 	b, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, err
@@ -52,7 +55,7 @@ func New(token string, apiClient *crmapi.BronivikClient, db *database.DB, manage
 	if rules.MaxActivePerUser < 0 {
 		rules.MaxActivePerUser = 0
 	}
-	return &Bot{api: apiClient, db: db, managers: mgrs, bot: b, state: newStateStore(), rules: rules}, nil
+	return &Bot{api: apiClient, db: db, managers: mgrs, bot: b, state: newStateStore(), rules: rules, logger: logger}, nil
 }
 
 // Start begins polling updates and handles commands.
@@ -60,24 +63,36 @@ func (b *Bot) Start(ctx context.Context) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := b.bot.GetUpdatesChan(u)
-	log.Printf("CRM bot authorized as %s", b.bot.Self.UserName)
+	b.logger.Info().Str("username", b.bot.Self.UserName).Msg("CRM bot authorized")
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case update := <-updates:
-			b.handleUpdate(ctx, update)
+			requestID := uuid.New().String()
+			l := b.logger.With().Str("request_id", requestID).Logger()
+			updateCtx := l.WithContext(ctx)
+			b.handleUpdate(updateCtx, update)
 		}
 	}
 }
 
 func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) {
+	l := zerolog.Ctx(ctx)
 	if update.CallbackQuery != nil {
+		l.Debug().
+			Int64("user_id", update.CallbackQuery.From.ID).
+			Str("data", update.CallbackQuery.Data).
+			Msg("Handling callback query")
 		b.handleCallback(ctx, update.CallbackQuery)
 		return
 	}
 	if update.Message != nil {
+		l.Debug().
+			Int64("user_id", update.Message.From.ID).
+			Str("text", update.Message.Text).
+			Msg("Handling message")
 		b.handleMessage(ctx, update.Message)
 		return
 	}

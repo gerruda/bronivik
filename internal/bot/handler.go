@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +19,7 @@ import (
 	"bronivik/internal/service"
 	"bronivik/internal/worker"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
@@ -95,6 +95,10 @@ func (b *Bot) Start(ctx context.Context) {
 			}
 			// Создаем контекст для обработки каждого обновления
 			updateCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+
+			requestID := uuid.New().String()
+			l := b.logger.With().Str("request_id", requestID).Logger()
+			updateCtx = l.WithContext(updateCtx)
 			
 			if update.CallbackQuery != nil {
 				b.handleCallbackQuery(updateCtx, update)
@@ -121,8 +125,9 @@ func (b *Bot) Start(ctx context.Context) {
 func (b *Bot) handleMessage(ctx context.Context, update tgbotapi.Update) {
 	userID := update.Message.From.ID
 	text := update.Message.Text
+	l := zerolog.Ctx(ctx)
 
-	b.logger.Debug().
+	l.Debug().
 		Int64("user_id", userID).
 		Str("username", update.Message.From.UserName).
 		Str("text", text).
@@ -294,7 +299,8 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	b.logger.Debug().
+	l := zerolog.Ctx(ctx)
+	l.Debug().
 		Int64("user_id", callback.From.ID).
 		Str("data", callback.Data).
 		Msg("Handling callback query")
@@ -973,7 +979,7 @@ func (b *Bot) SyncUsersToSheets(ctx context.Context) {
 
 	users, err := b.db.GetAllUsers(ctx)
 	if err != nil {
-		log.Printf("Failed to get users for Google Sheets sync: %v", err)
+		b.logger.Error().Err(err).Msg("Failed to get users for Google Sheets sync")
 		return
 	}
 
@@ -997,16 +1003,16 @@ func (b *Bot) SyncUsersToSheets(ctx context.Context) {
 
 	err = b.sheetsService.UpdateUsersSheet(ctx, googleUsers)
 	if err != nil {
-		log.Printf("Failed to sync users to Google Sheets: %v", err)
+		b.logger.Error().Err(err).Msg("Failed to sync users to Google Sheets")
 	} else {
-		log.Println("Users successfully synced to Google Sheets")
+		b.logger.Info().Msg("Users successfully synced to Google Sheets")
 	}
 }
 
 // SyncBookingsToSheets синхронизирует бронирования с Google Sheets
 func (b *Bot) SyncBookingsToSheets(ctx context.Context) {
 	if b.sheetsService == nil {
-		log.Println("Google Sheets service not initialized")
+		b.logger.Warn().Msg("Google Sheets service not initialized")
 		return
 	}
 
@@ -1016,11 +1022,11 @@ func (b *Bot) SyncBookingsToSheets(ctx context.Context) {
 
 	bookings, err := b.db.GetBookingsByDateRange(ctx, startDate, endDate)
 	if err != nil {
-		log.Printf("Failed to get bookings for Google Sheets sync: %v", err)
+		b.logger.Error().Err(err).Msg("Failed to get bookings for Google Sheets sync")
 		return
 	}
 
-	log.Printf("Syncing %d bookings to Google Sheets", len(bookings))
+	b.logger.Info().Int("count", len(bookings)).Msg("Syncing bookings to Google Sheets")
 
 	// Конвертируем в модели для Google Sheets
 	var googleBookings []*models.Booking
@@ -1044,9 +1050,9 @@ func (b *Bot) SyncBookingsToSheets(ctx context.Context) {
 	// Полностью перезаписываем лист с заявками
 	err = b.sheetsService.ReplaceBookingsSheet(ctx, googleBookings)
 	if err != nil {
-		log.Printf("Failed to sync bookings to Google Sheets: %v", err)
+		b.logger.Error().Err(err).Msg("Failed to sync bookings to Google Sheets")
 	} else {
-		log.Printf("Bookings successfully synced to Google Sheets: %d records", len(googleBookings))
+		b.logger.Info().Int("count", len(googleBookings)).Msg("Bookings successfully synced to Google Sheets")
 	}
 
 	// Также синхронизируем расписание
@@ -1074,9 +1080,9 @@ func (b *Bot) AppendBookingToSheets(ctx context.Context, booking *models.Booking
 
 	err := b.sheetsService.AppendBooking(ctx, googleBooking)
 	if err != nil {
-		log.Printf("Failed to append booking to Google Sheets: %v", err)
+		b.logger.Error().Err(err).Int64("booking_id", booking.ID).Msg("Failed to append booking to Google Sheets")
 	} else {
-		log.Printf("Booking %d appended to Google Sheets", booking.ID)
+		b.logger.Info().Int64("booking_id", booking.ID).Msg("Booking appended to Google Sheets")
 	}
 }
 
@@ -1107,7 +1113,12 @@ func (b *Bot) syncBookingsToSheetsAsync(ctx context.Context) {
 func (b *Bot) retryWithBackoff(ctx context.Context, op string, attempts int, baseDelay time.Duration, fn func(context.Context) error) {
 	for i := 0; i < attempts; i++ {
 		if err := fn(ctx); err != nil {
-			log.Printf("%s attempt %d/%d failed: %v", op, i+1, attempts, err)
+			b.logger.Warn().
+				Err(err).
+				Str("operation", op).
+				Int("attempt", i+1).
+				Int("max_attempts", attempts).
+				Msg("Operation attempt failed")
 			
 			select {
 			case <-ctx.Done():
@@ -1118,7 +1129,7 @@ func (b *Bot) retryWithBackoff(ctx context.Context, op string, attempts int, bas
 		}
 		return
 	}
-	log.Printf("%s failed after %d attempts", op, attempts)
+	b.logger.Error().Str("operation", op).Int("attempts", attempts).Msg("Operation failed after all attempts")
 }
 
 // enqueueBookingUpsert sends an upsert task to the sheets worker if available.
@@ -1131,7 +1142,7 @@ func (b *Bot) enqueueBookingUpsert(ctx context.Context, booking models.Booking) 
 		BookingID: booking.ID,
 		Booking:   &booking,
 	}); err != nil {
-		log.Printf("sheets enqueue upsert booking %d: %v", booking.ID, err)
+		b.logger.Error().Err(err).Int64("booking_id", booking.ID).Msg("sheets enqueue upsert booking error")
 	}
 }
 
@@ -1145,6 +1156,6 @@ func (b *Bot) enqueueBookingStatus(ctx context.Context, bookingID int64, status 
 		BookingID: bookingID,
 		Status:    status,
 	}); err != nil {
-		log.Printf("sheets enqueue status booking %d: %v", bookingID, err)
+		b.logger.Error().Err(err).Int64("booking_id", bookingID).Msg("sheets enqueue status booking error")
 	}
 }
