@@ -61,7 +61,7 @@ func main() {
 	}
 
 	// Инициализация базы данных
-	db, err := database.NewDB(cfg.Database.Path)
+	db, err := database.NewDB(cfg.Database.Path, &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Str("db_path", cfg.Database.Path).Msg("init database")
 	}

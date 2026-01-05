@@ -58,7 +58,7 @@ func (b *Bot) sendTomorrowReminders(ctx context.Context) {
 
 		msgText := formatReminderMessage(booking)
 		msg := tgbotapi.NewMessage(user.TelegramID, msgText)
-		if _, err := b.bot.Send(msg); err != nil {
+		if _, err := b.tgService.Send(msg); err != nil {
 			b.logger.Error().Err(err).Int64("telegram_id", user.TelegramID).Msg("reminder: send error")
 		}
 	}

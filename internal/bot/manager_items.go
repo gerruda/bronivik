@@ -183,5 +183,5 @@ func (b *Bot) refreshItemsFromDB(ctx context.Context) {
 func (b *Bot) editManagerItemsPage(update tgbotapi.Update, page int) {
 	callback := update.CallbackQuery
 	b.sendManagerItemsPage(context.Background(), callback.Message.Chat.ID, callback.Message.MessageID, page)
-	b.bot.Send(tgbotapi.NewCallback(callback.ID, ""))
+	b.tgService.Send(tgbotapi.NewCallback(callback.ID, ""))
 }

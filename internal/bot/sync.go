@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"bronivik/internal/models"
-	"bronivik/internal/worker"
 )
 
 // SyncUsersToSheets синхронизирует пользователей с Google Sheets
@@ -21,7 +20,8 @@ func (b *Bot) SyncUsersToSheets(ctx context.Context) {
 	}
 
 	var googleUsers []*models.User
-	for _, user := range users {
+	for i := range users {
+		user := &users[i]
 		googleUsers = append(googleUsers, &models.User{
 			ID:            user.ID,
 			TelegramID:    user.TelegramID,
@@ -67,7 +67,8 @@ func (b *Bot) SyncBookingsToSheets(ctx context.Context) {
 
 	// Конвертируем в модели для Google Sheets
 	var googleBookings []*models.Booking
-	for _, booking := range bookings {
+	for i := range bookings {
+		booking := &bookings[i]
 		googleBookings = append(googleBookings, &models.Booking{
 			ID:           booking.ID,
 			UserID:       booking.UserID,
@@ -174,11 +175,7 @@ func (b *Bot) enqueueBookingUpsert(ctx context.Context, booking models.Booking) 
 	if b.sheetsWorker == nil {
 		return
 	}
-	if err := b.sheetsWorker.EnqueueTask(ctx, worker.SheetTask{
-		Type:      worker.TaskUpsert,
-		BookingID: booking.ID,
-		Booking:   &booking,
-	}); err != nil {
+	if err := b.sheetsWorker.EnqueueTask(ctx, "upsert", booking.ID, &booking, ""); err != nil {
 		b.logger.Error().Err(err).Int64("booking_id", booking.ID).Msg("sheets enqueue upsert booking error")
 	}
 }
@@ -188,11 +185,7 @@ func (b *Bot) enqueueBookingStatus(ctx context.Context, bookingID int64, status 
 	if b.sheetsWorker == nil {
 		return
 	}
-	if err := b.sheetsWorker.EnqueueTask(ctx, worker.SheetTask{
-		Type:      worker.TaskUpdateStatus,
-		BookingID: bookingID,
-		Status:    status,
-	}); err != nil {
+	if err := b.sheetsWorker.EnqueueTask(ctx, "update_status", bookingID, nil, status); err != nil {
 		b.logger.Error().Err(err).Int64("booking_id", bookingID).Msg("sheets enqueue status booking error")
 	}
 }

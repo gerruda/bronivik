@@ -81,7 +81,7 @@ func (b *Bot) handleMessage(ctx context.Context, update tgbotapi.Update) {
 	case text == "📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ":
 		state := b.getUserState(ctx, update.Message.From.ID)
 		if state != nil && state.TempData["item_id"] != nil {
-			itemID := b.getInt64FromTempData(state.TempData, "item_id")
+			itemID := state.GetInt64("item_id")
 			b.handleDateSelection(ctx, update, itemID)
 		}
 

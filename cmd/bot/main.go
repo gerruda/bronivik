@@ -21,6 +21,7 @@ import (
 	"bronivik/internal/repository"
 	"bronivik/internal/service"
 	"bronivik/internal/worker"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v2"
@@ -149,6 +150,9 @@ func main() {
 	eventBus := events.NewEventBus()
 	subscribeBookingEvents(ctx, eventBus, db, sheetsWorker, &logger)
 
+	// Инициализация бизнес-сервисов
+	bookingService := service.NewBookingService(db, eventBus, sheetsWorker, &logger)
+
 	// Инициализация API сервера
 	if cfg.API.Enabled {
 		apiServer := api.NewHTTPServer(cfg.API, db, &logger)
@@ -167,7 +171,14 @@ func main() {
 	}
 
 	// Создание и запуск бота
-	telegramBot, err := bot.NewBot(cfg.Telegram.BotToken, cfg, itemsConfig.Items, db, stateService, sheetsService, sheetsWorker, eventBus, &logger)
+	botAPI, err := tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Ошибка создания BotAPI")
+	}
+	botWrapper := bot.NewBotWrapper(botAPI)
+	tgService := service.NewTelegramService(botWrapper)
+
+	telegramBot, err := bot.NewBot(tgService, cfg, itemsConfig.Items, db, stateService, sheetsService, sheetsWorker, eventBus, bookingService, &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Ошибка создания бота")
 	}
@@ -209,7 +220,7 @@ func subscribeBookingEvents(ctx context.Context, bus *events.EventBus, db *datab
 			return nil
 		}
 
-		if err := sheetsWorker.EnqueueTask(ctx, worker.SheetTask{Type: worker.TaskUpsert, BookingID: booking.ID, Booking: booking}); err != nil {
+		if err := sheetsWorker.EnqueueTask(ctx, "upsert", booking.ID, booking, ""); err != nil {
 			logger.Error().Err(err).Int64("booking_id", booking.ID).Msg("event bus: enqueue upsert")
 		}
 		return nil
@@ -235,7 +246,7 @@ func subscribeBookingEvents(ctx context.Context, bus *events.EventBus, db *datab
 			return nil
 		}
 
-		if err := sheetsWorker.EnqueueTask(ctx, worker.SheetTask{Type: worker.TaskUpdateStatus, BookingID: payload.BookingID, Status: status}); err != nil {
+		if err := sheetsWorker.EnqueueTask(ctx, "update_status", payload.BookingID, nil, status); err != nil {
 			logger.Error().Err(err).Int64("booking_id", payload.BookingID).Msg("event bus: enqueue status")
 		}
 		return nil

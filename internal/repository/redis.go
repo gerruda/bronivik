@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"bronivik/internal/config"
-	"bronivik/internal/domain"
+	"bronivik/internal/models"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -37,7 +37,7 @@ func NewRedisStateRepository(client *redis.Client, ttl time.Duration) *RedisStat
 	}
 }
 
-func (r *RedisStateRepository) GetState(ctx context.Context, userID int64) (*domain.UserState, error) {
+func (r *RedisStateRepository) GetState(ctx context.Context, userID int64) (*models.UserState, error) {
 	key := fmt.Sprintf("user_state:%d", userID)
 	val, err := r.client.Get(ctx, key).Result()
 	if err == redis.Nil {
@@ -47,7 +47,7 @@ func (r *RedisStateRepository) GetState(ctx context.Context, userID int64) (*dom
 		return nil, fmt.Errorf("failed to get state from redis: %w", err)
 	}
 
-	var state domain.UserState
+	var state models.UserState
 	if err := json.Unmarshal([]byte(val), &state); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
 	}
@@ -55,7 +55,7 @@ func (r *RedisStateRepository) GetState(ctx context.Context, userID int64) (*dom
 	return &state, nil
 }
 
-func (r *RedisStateRepository) SetState(ctx context.Context, state *domain.UserState) error {
+func (r *RedisStateRepository) SetState(ctx context.Context, state *models.UserState) error {
 	key := fmt.Sprintf("user_state:%d", state.UserID)
 	data, err := json.Marshal(state)
 	if err != nil {

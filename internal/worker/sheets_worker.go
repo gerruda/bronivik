@@ -18,6 +18,7 @@ const (
 	TaskUpsert       = "upsert"
 	TaskDelete       = "delete"
 	TaskUpdateStatus = "update_status"
+	TaskSyncSchedule = "sync_schedule"
 )
 
 // SheetTask describes a unit of work for Sheets.
@@ -34,6 +35,8 @@ type sheetTaskPayload struct {
 	BookingID int64           `json:"booking_id"`
 	Booking   *models.Booking `json:"booking,omitempty"`
 	Status    string          `json:"status,omitempty"`
+	StartDate time.Time       `json:"start_date,omitempty"`
+	EndDate   time.Time       `json:"end_date,omitempty"`
 }
 
 // SheetsWorker consumes sync_queue tasks and applies them to Google Sheets.
@@ -41,6 +44,7 @@ type SheetsClient interface {
 	UpsertBooking(context.Context, *models.Booking) error
 	DeleteBookingRow(context.Context, int64) error
 	UpdateBookingStatus(context.Context, int64, string) error
+	UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]models.Booking, items []models.Item) error
 }
 
 type SheetsWorker struct {
@@ -90,21 +94,21 @@ func NewSheetsWorker(db *database.DB, sheets SheetsClient, redisClient *redis.Cl
 }
 
 // EnqueueTask persists task to DB and schedules it via redis or in-memory queue.
-func (w *SheetsWorker) EnqueueTask(ctx context.Context, task SheetTask) error {
-	if task.Type == "" {
+func (w *SheetsWorker) EnqueueTask(ctx context.Context, taskType string, bookingID int64, booking *models.Booking, status string) error {
+	if taskType == "" {
 		return errors.New("task type is required")
 	}
-	if task.BookingID == 0 && (task.Booking == nil || task.Booking.ID == 0) {
+	if bookingID == 0 && (booking == nil || booking.ID == 0) {
 		return errors.New("booking id is required")
 	}
 
 	payload := sheetTaskPayload{
-		BookingID: task.BookingID,
-		Booking:   task.Booking,
-		Status:    task.Status,
+		BookingID: bookingID,
+		Booking:   booking,
+		Status:    status,
 	}
-	if payload.BookingID == 0 && task.Booking != nil {
-		payload.BookingID = task.Booking.ID
+	if payload.BookingID == 0 && booking != nil {
+		payload.BookingID = booking.ID
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -113,7 +117,7 @@ func (w *SheetsWorker) EnqueueTask(ctx context.Context, task SheetTask) error {
 	}
 
 	syncTask := models.SyncTask{
-		TaskType:  task.Type,
+		TaskType:  taskType,
 		BookingID: payload.BookingID,
 		Payload:   string(payloadBytes),
 		Status:    "pending",
@@ -248,6 +252,27 @@ func (w *SheetsWorker) handleSheetTask(ctx context.Context, taskType string, pay
 			return errors.New("booking id or status missing")
 		}
 		return w.sheets.UpdateBookingStatus(ctx, payload.BookingID, payload.Status)
+	case TaskSyncSchedule:
+		startDate := payload.StartDate
+		endDate := payload.EndDate
+		if startDate.IsZero() {
+			startDate = time.Now().AddDate(0, -models.DefaultExportRangeMonthsBefore, 0).Truncate(24 * time.Hour)
+		}
+		if endDate.IsZero() {
+			endDate = time.Now().AddDate(0, models.DefaultExportRangeMonthsAfter, 0).Truncate(24 * time.Hour)
+		}
+
+		dailyBookings, err := w.db.GetDailyBookings(ctx, startDate, endDate)
+		if err != nil {
+			return fmt.Errorf("get daily bookings: %w", err)
+		}
+
+		items, err := w.db.GetActiveItems(ctx)
+		if err != nil {
+			return fmt.Errorf("get active items: %w", err)
+		}
+
+		return w.sheets.UpdateScheduleSheet(ctx, startDate, endDate, dailyBookings, items)
 	default:
 		return fmt.Errorf("unknown task type: %s", taskType)
 	}
@@ -308,4 +333,43 @@ func (w *SheetsWorker) pushDeadLetter(ctx context.Context, task *models.SyncTask
 	if err := w.redis.LPush(ctx, w.deadLetterKey, data).Err(); err != nil {
 		w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: deadletter push")
 	}
+}
+
+func (w *SheetsWorker) EnqueueSyncSchedule(ctx context.Context, startDate, endDate time.Time) error {
+	payload := sheetTaskPayload{
+		StartDate: startDate,
+		EndDate:   endDate,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode payload: %w", err)
+	}
+
+	syncTask := models.SyncTask{
+		TaskType:  TaskSyncSchedule,
+		Payload:   string(payloadBytes),
+		Status:    "pending",
+		CreatedAt: time.Now(),
+	}
+
+	if err := w.db.CreateSyncTask(ctx, &syncTask); err != nil {
+		return fmt.Errorf("persist sync task: %w", err)
+	}
+
+	if w.redis != nil {
+		if err := w.pushRedis(ctx, syncTask); err != nil {
+			w.logger.Warn().Err(err).Msg("sheets_worker: redis push failed, fallback to memory queue")
+		} else {
+			return nil
+		}
+	}
+
+	select {
+	case w.queue <- syncTask:
+	default:
+		w.logger.Warn().Int64("task_id", syncTask.ID).Msg("sheets_worker: in-memory queue full, task dropped to polling")
+	}
+
+	return nil
 }

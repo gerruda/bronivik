@@ -2,13 +2,13 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"bronivik/internal/database"
-	"bronivik/internal/events"
 	"bronivik/internal/models"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -25,7 +25,7 @@ func (b *Bot) startManagerBooking(ctx context.Context, update tgbotapi.Update) {
 	b.setUserState(ctx, update.Message.From.ID, "manager_waiting_client_name", map[string]interface{}{
 		"is_manager_booking": true,
 	})
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // handleManagerClientName обработка ввода имени клиента
@@ -34,7 +34,7 @@ func (b *Bot) handleManagerClientName(ctx context.Context, update tgbotapi.Updat
 	b.setUserState(ctx, update.Message.From.ID, "manager_waiting_client_phone", state.TempData)
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "📱 Введите телефон клиента:")
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // handleManagerClientPhone обработка ввода телефона клиента
@@ -113,8 +113,8 @@ func (b *Bot) handleManagerItemSelection(ctx context.Context, update tgbotapi.Up
 	)
 	msg.ReplyMarkup = &keyboard
 
-	b.bot.Send(msg)
-	b.bot.Send(tgbotapi.NewCallback(callback.ID, ""))
+	b.tgService.Send(msg)
+	b.tgService.Send(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleManagerDateType обработка выбора типа даты
@@ -134,7 +134,7 @@ func (b *Bot) handleManagerDateType(ctx context.Context, update tgbotapi.Update,
 			callback.Message.MessageID,
 			"📅 Введите дату бронирования в формате ДД.ММ.ГГГГ (например, 25.12.2024):",
 		)
-		b.bot.Send(editMsg)
+		b.tgService.Send(editMsg)
 	} else {
 		state.TempData["date_type"] = "range"
 		b.setUserState(ctx, callback.From.ID, "manager_waiting_start_date", state.TempData)
@@ -144,10 +144,10 @@ func (b *Bot) handleManagerDateType(ctx context.Context, update tgbotapi.Update,
 			callback.Message.MessageID,
 			"📅 Введите начальную дату интервала в формате ДД.ММ.ГГГГ (например, 25.12.2024):",
 		)
-		b.bot.Send(editMsg)
+		b.tgService.Send(editMsg)
 	}
 
-	b.bot.Send(tgbotapi.NewCallback(callback.ID, ""))
+	b.tgService.Send(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleManagerSingleDate обработка ввода одной даты
@@ -220,7 +220,7 @@ func (b *Bot) handleManagerEndDate(ctx context.Context, update tgbotapi.Update, 
 		return
 	}
 
-	startDate := b.getTimeFromTempData(state.TempData, "start_date")
+	startDate := state.GetTime("start_date")
 
 	// Проверяем, что конечная дата не раньше начальной
 	if endDate.Before(startDate) {
@@ -270,7 +270,7 @@ func (b *Bot) handleManagerComment(ctx context.Context, update tgbotapi.Update, 
 func (b *Bot) showManagerBookingConfirmation(ctx context.Context, update tgbotapi.Update, state *models.UserState) {
 	clientName := state.TempData["client_name"].(string)
 	clientPhone := state.TempData["client_phone"].(string)
-	itemID := b.getInt64FromTempData(state.TempData, "item_id")
+	itemID := state.GetInt64("item_id")
 	var selectedItem models.Item
 	for _, item := range b.items {
 		if item.ID == itemID {
@@ -278,7 +278,7 @@ func (b *Bot) showManagerBookingConfirmation(ctx context.Context, update tgbotap
 			break
 		}
 	}
-	dates := b.getDatesFromTempData(state.TempData, "dates")
+	dates := state.GetDates("dates")
 	comment := state.TempData["comment"].(string)
 	dateType := state.TempData["date_type"].(string)
 
@@ -310,14 +310,14 @@ func (b *Bot) showManagerBookingConfirmation(ctx context.Context, update tgbotap
 	msg.ReplyMarkup = keyboard
 	msg.ParseMode = "Markdown"
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // createManagerBookings создает заявки менеджера
 func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update, state *models.UserState) {
 	clientName := state.TempData["client_name"].(string)
 	clientPhone := state.TempData["client_phone"].(string)
-	itemID := b.getInt64FromTempData(state.TempData, "item_id")
+	itemID := state.GetInt64("item_id")
 	var selectedItem models.Item
 	for _, item := range b.items {
 		if item.ID == itemID {
@@ -325,7 +325,7 @@ func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update,
 			break
 		}
 	}
-	dates := b.getDatesFromTempData(state.TempData, "dates")
+	dates := state.GetDates("dates")
 	comment := state.TempData["comment"].(string)
 
 	var createdBookings []*models.Booking
@@ -361,14 +361,12 @@ func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update,
 			UpdatedAt:    time.Now(),
 		}
 
-		err = b.db.CreateBooking(ctx, booking)
+		err = b.bookingService.CreateBooking(ctx, booking)
 		if err != nil {
 			b.logger.Error().Err(err).Interface("booking", booking).Msg("Error creating manager booking")
 			failedDates = append(failedDates, date.Format("02.01.2006"))
 		} else {
 			createdBookings = append(createdBookings, booking)
-			b.publishBookingEvent(ctx, events.EventBookingCreated, *booking, "manager", update.Message.From.ID)
-			b.publishBookingEvent(ctx, events.EventBookingConfirmed, *booking, "manager", update.Message.From.ID)
 		}
 	}
 
@@ -478,7 +476,7 @@ func (b *Bot) startChangeItem(ctx context.Context, booking *models.Booking, mana
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(keyboardRows...)
 	msg.ReplyMarkup = &keyboard
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // handleChangeItem обработка выбора нового аппарата С ПРОВЕРКОЙ ДОСТУПНОСТИ
@@ -509,25 +507,24 @@ func (b *Bot) handleChangeItem(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	// ПРОВЕРЯЕМ ДОСТУПНОСТЬ нового аппарата на дату заявки
-	booking, available, err := b.db.GetBookingWithAvailability(ctx, bookingID, selectedItem.ID)
+	// Получаем текущую заявку для версии
+	booking, err := b.db.GetBooking(ctx, bookingID)
 	if err != nil {
-		b.logger.Error().Err(err).Int64("booking_id", bookingID).Int64("item_id", selectedItem.ID).Msg("Error checking availability")
-		b.sendMessage(callback.Message.Chat.ID, "Ошибка при проверке доступности")
+		b.logger.Error().Err(err).Int64("booking_id", bookingID).Msg("Error getting booking")
+		b.sendMessage(callback.Message.Chat.ID, "Ошибка при получении заявки")
 		return
 	}
 
-	if !available {
-		b.sendMessage(callback.Message.Chat.ID,
-			fmt.Sprintf("❌ Аппарат '%s' недоступен на дату %s. Выберите другой аппарат.",
-				selectedItem.Name, booking.Date.Format("02.01.2006")))
-		return
-	}
-
-	// Обновляем заявку и статус с проверкой версии
-	err = b.db.UpdateBookingItemAndStatusWithVersion(ctx, bookingID, booking.Version, selectedItem.ID, selectedItem.Name, models.StatusChanged)
+	// Обновляем заявку через сервис
+	err = b.bookingService.ChangeBookingItem(ctx, bookingID, booking.Version, selectedItem.ID, callback.From.ID)
 	if err != nil {
-		if err == database.ErrConcurrentModification {
+		if errors.Is(err, database.ErrNotAvailable) {
+			b.sendMessage(callback.Message.Chat.ID,
+				fmt.Sprintf("❌ Аппарат '%s' недоступен на дату %s. Выберите другой аппарат.",
+					selectedItem.Name, booking.Date.Format("02.01.2006")))
+			return
+		}
+		if errors.Is(err, database.ErrConcurrentModification) {
 			b.sendMessage(callback.Message.Chat.ID, "Заявка была обновлена кем-то еще. Обновите данные и попробуйте снова.")
 			return
 		}
@@ -536,21 +533,12 @@ func (b *Bot) handleChangeItem(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	booking.ItemID = selectedItem.ID
-	booking.ItemName = selectedItem.Name
-	booking.Status = models.StatusChanged
-	booking.Version++
-	b.publishBookingEvent(ctx, events.EventBookingItemChange, *booking, "manager", callback.From.ID)
-
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
 		fmt.Sprintf("🔄 В вашей заявке #%d изменен аппарат на: %s", bookingID, selectedItem.Name))
-	b.bot.Send(userMsg)
+	b.tgService.Send(userMsg)
 
 	b.sendMessage(callback.Message.Chat.ID, "✅ Аппарат успешно изменен")
-
-	// Асинхронно обновляем расписание в Google Sheets
-	go b.SyncScheduleToSheets(ctx)
 
 	// ВМЕСТО ВЫЗОВА showManagerBookingDetail, который требует Message, используем sendManagerBookingDetail
 	updatedBooking, err := b.db.GetBooking(ctx, bookingID)
@@ -626,14 +614,14 @@ func (b *Bot) sendManagerBookingDetail(ctx context.Context, chatID int64, bookin
 		msg.ReplyMarkup = &keyboard
 	}
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // reopenBooking возврат заявки в работу
 func (b *Bot) reopenBooking(ctx context.Context, booking *models.Booking, managerChatID int64) {
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusPending)
+	err := b.bookingService.ReopenBooking(ctx, booking.ID, booking.Version, managerChatID)
 	if err != nil {
-		if err == database.ErrConcurrentModification {
+		if errors.Is(err, database.ErrConcurrentModification) {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
 			return
 		}
@@ -641,19 +629,13 @@ func (b *Bot) reopenBooking(ctx context.Context, booking *models.Booking, manage
 		return
 	}
 
-	booking.Version++
-	booking.Status = models.StatusPending
-
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
 		fmt.Sprintf("🔄 Ваша заявка #%d возвращена в работу. Ожидайте подтверждения.", booking.ID))
-	b.bot.Send(userMsg)
+	b.tgService.Send(userMsg)
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "✅ Заявка возвращена в работу")
-	b.bot.Send(managerMsg)
-
-	// Асинхронно обновляем расписание в Google Sheets
-	go b.SyncScheduleToSheets(ctx)
+	b.tgService.Send(managerMsg)
 }
 
 // completeBooking завершение заявки
@@ -663,9 +645,9 @@ func (b *Bot) completeBooking(ctx context.Context, booking *models.Booking, mana
 		Int64("manager_id", managerChatID).
 		Msg("Manager completed booking")
 
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusCompleted)
+	err := b.bookingService.CompleteBooking(ctx, booking.ID, booking.Version, managerChatID)
 	if err != nil {
-		if err == database.ErrConcurrentModification {
+		if errors.Is(err, database.ErrConcurrentModification) {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
 			return
 		}
@@ -673,21 +655,13 @@ func (b *Bot) completeBooking(ctx context.Context, booking *models.Booking, mana
 		return
 	}
 
-	booking.Version++
-	booking.Status = models.StatusCompleted
-
-	b.publishBookingEvent(ctx, events.EventBookingCompleted, *booking, "manager", managerChatID)
-
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
 		fmt.Sprintf("🏁 Ваша заявка #%d завершена. Спасибо за использование наших услуг!", booking.ID))
-	b.bot.Send(userMsg)
+	b.tgService.Send(userMsg)
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "✅ Заявка завершена")
-	b.bot.Send(managerMsg)
-
-	// Асинхронно обновляем расписание в Google Sheets
-	go b.SyncScheduleToSheets(ctx)
+	b.tgService.Send(managerMsg)
 }
 
 // confirmBooking подтверждение бронирования менеджером
@@ -697,9 +671,9 @@ func (b *Bot) confirmBooking(ctx context.Context, booking *models.Booking, manag
 		Int64("manager_id", managerChatID).
 		Msg("Manager confirmed booking")
 
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusConfirmed)
+	err := b.bookingService.ConfirmBooking(ctx, booking.ID, booking.Version, managerChatID)
 	if err != nil {
-		if err == database.ErrConcurrentModification {
+		if errors.Is(err, database.ErrConcurrentModification) {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
 			return
 		}
@@ -707,23 +681,15 @@ func (b *Bot) confirmBooking(ctx context.Context, booking *models.Booking, manag
 		return
 	}
 
-	booking.Version++
-	booking.Status = models.StatusConfirmed
-
-	b.publishBookingEvent(ctx, events.EventBookingConfirmed, *booking, "manager", managerChatID)
-
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
 		fmt.Sprintf("✅ Ваша заявка на %s %s подтверждена!",
 			booking.ItemName, booking.Date.Format("02.01.2006")))
-	b.bot.Send(userMsg)
+	b.tgService.Send(userMsg)
 
 	// Уведомляем менеджера
 	managerMsg := tgbotapi.NewMessage(managerChatID, "✅ Бронирование подтверждено")
-	b.bot.Send(managerMsg)
-
-	// Асинхронно обновляем расписание в Google Sheets
-	go b.SyncScheduleToSheets(ctx)
+	b.tgService.Send(managerMsg)
 }
 
 // rejectBooking отклонение бронирования менеджером
@@ -733,9 +699,9 @@ func (b *Bot) rejectBooking(ctx context.Context, booking *models.Booking, manage
 		Int64("manager_id", managerChatID).
 		Msg("Manager rejected booking")
 
-	err := b.db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusCancelled)
+	err := b.bookingService.RejectBooking(ctx, booking.ID, booking.Version, managerChatID)
 	if err != nil {
-		if err == database.ErrConcurrentModification {
+		if errors.Is(err, database.ErrConcurrentModification) {
 			b.sendMessage(managerChatID, "Заявка уже изменена. Обновите данные и попробуйте снова.")
 			return
 		}
@@ -743,21 +709,13 @@ func (b *Bot) rejectBooking(ctx context.Context, booking *models.Booking, manage
 		return
 	}
 
-	booking.Version++
-	booking.Status = models.StatusCancelled
-
-	b.publishBookingEvent(ctx, events.EventBookingCancelled, *booking, "manager", managerChatID)
-
 	// Уведомляем пользователя
 	userMsg := tgbotapi.NewMessage(booking.UserID,
 		"❌ К сожалению, ваша заявка была отклонена менеджером.")
-	b.bot.Send(userMsg)
+	b.tgService.Send(userMsg)
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "❌ Бронирование отменено")
-	b.bot.Send(managerMsg)
-
-	// Асинхронно обновляем расписание в Google Sheets
-	go b.SyncScheduleToSheets(ctx)
+	b.tgService.Send(managerMsg)
 }
 
 // rescheduleBooking предложение выбрать другую дату
@@ -774,19 +732,16 @@ func (b *Bot) rescheduleBooking(ctx context.Context, booking *models.Booking, ma
 	)
 	userMsg.ReplyMarkup = keyboard
 
-	b.bot.Send(userMsg)
+	b.tgService.Send(userMsg)
 
-	// Обновляем статус текущей заявки
-	err := b.db.UpdateBookingStatus(ctx, booking.ID, "rescheduled")
+	// Обновляем статус текущей заявки через сервис
+	err := b.bookingService.RescheduleBooking(ctx, booking.ID, managerChatID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("booking_id", booking.ID).Msg("Error updating booking status")
 	}
 
 	managerMsg := tgbotapi.NewMessage(managerChatID, "🔄 Пользователю предложено выбрать другую дату")
-	b.bot.Send(managerMsg)
-
-	// Асинхронно обновляем расписание в Google Sheets
-	go b.SyncScheduleToSheets(ctx)
+	b.tgService.Send(managerMsg)
 }
 
 // notifyManagers уведомление менеджеров о новой заявке
@@ -824,7 +779,7 @@ func (b *Bot) notifyManagers(booking models.Booking) {
 		)
 		msg.ReplyMarkup = &keyboard
 
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 	}
 }
 
@@ -843,7 +798,7 @@ func (b *Bot) handleCallButton(ctx context.Context, update tgbotapi.Update) {
 	if err != nil {
 		b.sendMessage(callback.Message.Chat.ID, "❌ Ошибка: неверный формат данных заявки")
 		// Подтверждаем callback даже при ошибке
-		b.bot.Send(tgbotapi.NewCallback(callback.ID, "❌ Ошибка"))
+		b.tgService.Send(tgbotapi.NewCallback(callback.ID, "❌ Ошибка"))
 		return
 	}
 
@@ -851,13 +806,13 @@ func (b *Bot) handleCallButton(ctx context.Context, update tgbotapi.Update) {
 	booking, err := b.db.GetBooking(ctx, bookingID)
 	if err != nil {
 		b.sendMessage(callback.Message.Chat.ID, "❌ Заявка не найдена")
-		b.bot.Send(tgbotapi.NewCallback(callback.ID, "❌ Заявка не найдена"))
+		b.tgService.Send(tgbotapi.NewCallback(callback.ID, "❌ Заявка не найдена"))
 		return
 	}
 
 	if booking.Phone == "" {
 		b.sendMessage(callback.Message.Chat.ID, "❌ Номер телефона не указан в заявке")
-		b.bot.Send(tgbotapi.NewCallback(callback.ID, "❌ Номер не указан"))
+		b.tgService.Send(tgbotapi.NewCallback(callback.ID, "❌ Номер не указан"))
 		return
 	}
 
@@ -890,6 +845,6 @@ func (b *Bot) handleCallButton(ctx context.Context, update tgbotapi.Update) {
 	)
 	msg.ReplyMarkup = &keyboard
 
-	b.bot.Send(tgbotapi.NewCallback(callback.ID, "✅"))
-	b.bot.Send(msg)
+	b.tgService.Send(tgbotapi.NewCallback(callback.ID, "✅"))
+	b.tgService.Send(msg)
 }

@@ -17,7 +17,7 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, update tgbotapi.Update) {
 
 	// Отвечаем на callback сразу, чтобы убрать "часики"
 	callbackConfig := tgbotapi.NewCallback(callback.ID, "")
-	b.bot.Request(callbackConfig)
+	b.tgService.Request(callbackConfig)
 
 	if b.isBlacklisted(userID) {
 		return
@@ -62,7 +62,7 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, update tgbotapi.Update) {
 	case data == "start_the_order_item":
 		state := b.getUserState(ctx, userID)
 		if state != nil && state.TempData["item_id"] != nil {
-			itemID := b.getInt64FromTempData(state.TempData, "item_id")
+			itemID := state.GetInt64("item_id")
 			b.handleDateSelection(ctx, update, itemID)
 		}
 	}
@@ -89,7 +89,7 @@ func (b *Bot) handleDateSelection(ctx context.Context, update tgbotapi.Update, i
 		"item_id": itemID,
 	})
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 func (b *Bot) handleScheduleItemSelected(ctx context.Context, update tgbotapi.Update, itemID int64) {
@@ -125,5 +125,5 @@ func (b *Bot) handleScheduleItemSelected(ctx context.Context, update tgbotapi.Up
 	)
 	msg.ReplyMarkup = keyboard
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }

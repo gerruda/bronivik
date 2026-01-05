@@ -23,7 +23,17 @@ type BronivikClient struct {
 	cacheTTL time.Duration
 }
 
-// ... (AvailabilityResponse, Item structs)
+// AvailabilityResponse represents the response from availability API.
+type AvailabilityResponse struct {
+	Available bool `json:"available"`
+}
+
+// Item represents an item from the API.
+type Item struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	TotalQuantity int    `json:"total_quantity"`
+}
 
 // NewBronivikClient constructs a client with baseURL, API key and extra header.
 func NewBronivikClient(baseURL, apiKey, apiExtra string) *BronivikClient {

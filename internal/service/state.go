@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"bronivik/internal/domain"
+	"bronivik/internal/models"
 
 	"github.com/rs/zerolog"
 )
@@ -20,7 +22,7 @@ func NewStateService(stateRepo domain.StateRepository, logger *zerolog.Logger) *
 	}
 }
 
-func (s *StateService) GetUserState(ctx context.Context, userID int64) (*domain.UserState, error) {
+func (s *StateService) GetUserState(ctx context.Context, userID int64) (*models.UserState, error) {
 	state, err := s.stateRepo.GetState(ctx, userID)
 	if err != nil {
 		s.logger.Error().Err(err).Int64("user_id", userID).Msg("failed to get user state")
@@ -31,10 +33,10 @@ func (s *StateService) GetUserState(ctx context.Context, userID int64) (*domain.
 }
 
 func (s *StateService) SetUserState(ctx context.Context, userID int64, step string, data map[string]interface{}) error {
-	state := &domain.UserState{
-		UserID: userID,
-		Step:   step,
-		Data:   data,
+	state := &models.UserState{
+		UserID:      userID,
+		CurrentStep: step,
+		TempData:    data,
 	}
 	return s.stateRepo.SetState(ctx, state)
 }
@@ -49,16 +51,16 @@ func (s *StateService) UpdateUserStateData(ctx context.Context, userID int64, ke
 		return err
 	}
 	if state == nil {
-		state = &domain.UserState{
-			UserID: userID,
-			Data:   make(map[string]interface{}),
+		state = &models.UserState{
+			UserID:   userID,
+			TempData: make(map[string]interface{}),
 		}
 	}
 
-	if state.Data == nil {
-		state.Data = make(map[string]interface{})
+	if state.TempData == nil {
+		state.TempData = make(map[string]interface{})
 	}
-	state.Data[key] = value
+	state.TempData[key] = value
 
 	return s.stateRepo.SetState(ctx, state)
 }

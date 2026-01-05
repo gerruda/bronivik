@@ -6,35 +6,39 @@ import (
 	"time"
 
 	"bronivik/internal/config"
-	"bronivik/internal/database"
+	"bronivik/internal/domain"
 	"bronivik/internal/events"
-	"bronivik/internal/google"
 	"bronivik/internal/models"
-	"bronivik/internal/service"
-	"bronivik/internal/worker"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
 type Bot struct {
-	bot           *tgbotapi.BotAPI
-	config        *config.Config
-	items         []models.Item
-	db            *database.DB
-	stateService  *service.StateService
-	sheetsService *google.SheetsService
-	sheetsWorker  *worker.SheetsWorker
-	eventBus      *events.EventBus
-	logger        *zerolog.Logger
+	tgService      domain.TelegramService
+	config         *config.Config
+	items          []models.Item
+	db             domain.Repository
+	stateService   domain.StateManager
+	sheetsService  domain.SheetsWriter
+	sheetsWorker   domain.SyncWorker
+	eventBus       domain.EventPublisher
+	bookingService domain.BookingService
+	logger         *zerolog.Logger
 }
 
-func NewBot(token string, config *config.Config, items []models.Item, db *database.DB, stateService *service.StateService, googleService *google.SheetsService, sheetsWorker *worker.SheetsWorker, eventBus *events.EventBus, logger *zerolog.Logger) (*Bot, error) {
-	botAPI, err := tgbotapi.NewBotAPI(token)
-	if err != nil {
-		return nil, err
-	}
-
+func NewBot(
+	tgService domain.TelegramService,
+	config *config.Config,
+	items []models.Item,
+	db domain.Repository,
+	stateService domain.StateManager,
+	googleService domain.SheetsWriter,
+	sheetsWorker domain.SyncWorker,
+	eventBus domain.EventPublisher,
+	bookingService domain.BookingService,
+	logger *zerolog.Logger,
+) (*Bot, error) {
 	if eventBus == nil {
 		eventBus = events.NewEventBus()
 	}
@@ -45,15 +49,16 @@ func NewBot(token string, config *config.Config, items []models.Item, db *databa
 	}
 
 	return &Bot{
-		bot:           botAPI,
-		config:        config,
-		items:         items,
-		db:            db,
-		stateService:  stateService,
-		sheetsService: googleService,
-		sheetsWorker:  sheetsWorker,
-		eventBus:      eventBus,
-		logger:        logger,
+		tgService:      tgService,
+		config:         config,
+		items:          items,
+		db:             db,
+		stateService:   stateService,
+		sheetsService:  googleService,
+		sheetsWorker:   sheetsWorker,
+		eventBus:       eventBus,
+		bookingService: bookingService,
+		logger:         logger,
 	}, nil
 }
 
@@ -74,9 +79,9 @@ func (b *Bot) Start(ctx context.Context) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	updates := b.bot.GetUpdatesChan(u)
+	updates := b.tgService.GetUpdatesChan(u)
 
-	b.logger.Info().Str("username", b.bot.Self.UserName).Msg("Authorized on account")
+	b.logger.Info().Str("username", b.tgService.GetSelf().UserName).Msg("Authorized on account")
 
 	for {
 		select {

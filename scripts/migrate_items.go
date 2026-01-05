@@ -11,6 +11,7 @@ import (
 
 	"bronivik/internal/database"
 	"bronivik/internal/models"
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,6 +20,7 @@ type ItemsConfig struct {
 }
 
 func main() {
+	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 	var (
 		itemsPath = flag.String("items", "configs/items.yaml", "path to items.yaml")
 		dbPath    = flag.String("db", "./data/bookings.db", "path to sqlite db")
@@ -37,7 +39,7 @@ func main() {
 		log.Fatal("no items in yaml")
 	}
 
-	db, err := database.NewDB(*dbPath)
+	db, err := database.NewDB(*dbPath, &logger)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}

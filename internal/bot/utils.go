@@ -32,15 +32,7 @@ func (b *Bot) getUserState(ctx context.Context, userID int64) *models.UserState 
 		b.logger.Error().Err(err).Int64("user_id", userID).Msg("Error getting user state")
 		return nil
 	}
-	if state == nil {
-		return nil
-	}
-
-	return &models.UserState{
-		UserID:      state.UserID,
-		CurrentStep: state.Step,
-		TempData:    state.Data,
-	}
+	return state
 }
 
 func (b *Bot) clearUserState(ctx context.Context, userID int64) {
@@ -70,7 +62,7 @@ func (b *Bot) isManager(userID int64) bool {
 
 func (b *Bot) sendMessage(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 func (b *Bot) publishBookingEvent(ctx context.Context, eventType string, booking models.Booking, changedBy string, changedByID int64) {
@@ -153,7 +145,7 @@ func (b *Bot) handleMainMenu(ctx context.Context, update tgbotapi.Update) {
 	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(rows...)
 
 	b.setUserState(ctx, userID, StateMainMenu, nil)
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // showManagerContacts показывает контакты менеджеров
@@ -167,7 +159,7 @@ func (b *Bot) showManagerContacts(ctx context.Context, update tgbotapi.Update) {
 	message.WriteString("\nПо любым интересующим Вас вопросам, дадим ответ.")
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // showUserBookings показывает заявки пользователя
@@ -241,7 +233,7 @@ func (b *Bot) handlePersonalData(ctx context.Context, update tgbotapi.Update, it
 	)
 	msg.ReplyMarkup = keyboard
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // Добавляем метод для запроса имени
@@ -267,7 +259,7 @@ func (b *Bot) handleNameRequest(ctx context.Context, update tgbotapi.Update) {
 	b.setUserState(ctx, update.Message.From.ID, StateEnterName, state.TempData)
 
 	b.debugState(ctx, update.Message.From.ID, "handleNameRequest END")
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // Обновляем handlePhoneRequest - добавляем контакты
@@ -294,90 +286,10 @@ func (b *Bot) handlePhoneRequest(ctx context.Context, update tgbotapi.Update) {
 	state := b.getUserState(ctx, update.Message.From.ID)
 
 	b.setUserState(ctx, update.Message.From.ID, StatePhoneNumber, state.TempData)
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
-func (b *Bot) getInt64FromTempData(data map[string]interface{}, key string) int64 {
-	val, ok := data[key]
-	if !ok {
-		return 0
-	}
-	switch v := val.(type) {
-	case int64:
-		return v
-	case float64:
-		return int64(v)
-	case int:
-		return int64(v)
-	default:
-		return 0
-	}
-}
-
-func (b *Bot) getTimeFromTempData(data map[string]interface{}, key string) time.Time {
-	val, ok := data[key]
-	if !ok {
-		return time.Time{}
-	}
-	switch v := val.(type) {
-	case time.Time:
-		return v
-	case string:
-		t, err := time.Parse(time.RFC3339, v)
-		if err != nil {
-			// Try other formats if needed
-			t, err = time.Parse("2006-01-02T15:04:05Z07:00", v)
-			if err != nil {
-				return time.Time{}
-			}
-		}
-		return t
-	default:
-		return time.Time{}
-	}
-}
-
-func (b *Bot) getDatesFromTempData(data map[string]interface{}, key string) []time.Time {
-	val, ok := data[key]
-	if !ok {
-		return nil
-	}
-	switch v := val.(type) {
-	case []time.Time:
-		return v
-	case []interface{}:
-		var dates []time.Time
-		for _, item := range v {
-			if s, ok := item.(string); ok {
-				t, err := time.Parse(time.RFC3339, s)
-				if err != nil {
-					t, err = time.Parse("2006-01-02T15:04:05Z07:00", s)
-				}
-				if err == nil {
-					dates = append(dates, t)
-				}
-			} else if t, ok := item.(time.Time); ok {
-				dates = append(dates, t)
-			}
-		}
-		return dates
-	default:
-		return nil
-	}
-}
-
-func (b *Bot) getStringFromTempData(data map[string]interface{}, key string) string {
-	val, ok := data[key]
-	if !ok {
-		return ""
-	}
-	if s, ok := val.(string); ok {
-		return s
-	}
-	return fmt.Sprintf("%v", val)
-}
-
-// Обновляем finalizeBooking для использования имени
+// finalizeBooking обновляем для использования имени
 func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 	state := b.getUserState(ctx, update.Message.From.ID)
 	if state == nil {
@@ -387,8 +299,8 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Получаем данные из состояния
-	itemID := b.getInt64FromTempData(state.TempData, "item_id")
-	date := b.getTimeFromTempData(state.TempData, "date")
+	itemID := state.GetInt64("item_id")
+	date := state.GetTime("date")
 	phone, _ := state.TempData["phone"].(string)
 	userName, ok := state.TempData["user_name"].(string)
 	if !ok {
@@ -411,16 +323,6 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	// Финальная проверка доступности
-	available, err := b.db.CheckAvailability(ctx, selectedItem.ID, date)
-	if err != nil || !available {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-			"К сожалению, выбранная позиция больше не доступна. Пожалуйста, выберите другую дату.")
-		b.bot.Send(msg)
-		b.handleMainMenu(ctx, update)
-		return
-	}
-
 	// Создаем бронирование
 	booking := models.Booking{
 		UserID:       update.Message.From.ID,
@@ -435,7 +337,7 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 		UpdatedAt:    time.Now(),
 	}
 
-	err = b.db.CreateBookingWithLock(ctx, &booking)
+	err := b.bookingService.CreateBooking(ctx, &booking)
 	if err != nil {
 		if errors.Is(err, database.ErrNotAvailable) {
 			b.sendMessage(update.Message.Chat.ID, "К сожалению, позиция стала недоступна. Попробуйте выбрать другую дату.")
@@ -447,8 +349,6 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	b.publishBookingEvent(ctx, events.EventBookingCreated, booking, "user", update.Message.From.ID)
-
 	// Уведомляем менеджеров
 	b.notifyManagers(booking)
 
@@ -458,7 +358,7 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 	// Очищаем состояние
 	b.clearUserState(ctx, update.Message.From.ID)
 	b.handleMainMenu(ctx, update)
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // handleContactReceived обработка полученного контакта
@@ -520,7 +420,7 @@ func (b *Bot) handleSelectItem(ctx context.Context, update tgbotapi.Update) {
 
 		// Отвечаем на callback (убираем "часики")
 		callbackConfig := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
-		b.bot.Request(callbackConfig)
+		b.tgService.Request(callbackConfig)
 	} else {
 		b.logger.Error().Msg("Error: cannot determine chatID and userID in handleSelectItem")
 		return
@@ -576,7 +476,7 @@ func (b *Bot) showAvailableItems(ctx context.Context, update tgbotapi.Update) {
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
 	msg.ReplyMarkup = &markup
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // showMonthScheduleForItem показывает расписание на 30 дней для выбранного аппарата
@@ -587,7 +487,7 @@ func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Upda
 		return
 	}
 
-	itemID := b.getInt64FromTempData(state.TempData, "item_id")
+	itemID := state.GetInt64("item_id")
 	var selectedItem models.Item
 	for _, item := range b.items {
 		if item.ID == itemID {
@@ -597,7 +497,7 @@ func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Upda
 	}
 	startDate := time.Now()
 
-	availability, err := b.db.GetAvailabilityForPeriod(ctx, selectedItem.ID, startDate, 30)
+	availability, err := b.bookingService.GetAvailability(ctx, selectedItem.ID, startDate, 30)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("item_id", selectedItem.ID).Msg("Error getting availability")
 		b.sendMessage(update.Message.Chat.ID, "Ошибка при получении расписания")
@@ -634,7 +534,7 @@ func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Upda
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
 	msg.ReplyMarkup = &markup
 	msg.ParseMode = "Markdown"
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // handleSpecificDateInput обновляем для работы с выбранным аппаратом
@@ -645,7 +545,7 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 		return
 	}
 
-	itemID := b.getInt64FromTempData(state.TempData, "item_id")
+	itemID := state.GetInt64("item_id")
 	var selectedItem models.Item
 	for _, item := range b.items {
 		if item.ID == itemID {
@@ -658,11 +558,11 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 	if err != nil {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"Неверный формат даты. Используйте ДД.ММ.ГГГГ (например, 25.12.2024)")
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 		return
 	}
 
-	available, err := b.db.CheckAvailability(ctx, selectedItem.ID, date)
+	available, err := b.bookingService.CheckAvailability(ctx, selectedItem.ID, date)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("item_id", selectedItem.ID).Time("date", date).Msg("Error checking availability")
 		b.sendMessage(update.Message.Chat.ID, "Ошибка при проверке доступности")
@@ -684,7 +584,7 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
 	msg.ParseMode = "Markdown"
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // requestSpecificDate запрашивает у пользователя конкретную дату
@@ -693,7 +593,7 @@ func (b *Bot) requestSpecificDate(ctx context.Context, update tgbotapi.Update) {
 		"Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
 
 	b.setUserState(ctx, update.Message.From.ID, "waiting_specific_date", nil)
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // handleCustomInput ...
@@ -732,7 +632,7 @@ func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateS
 	if err != nil {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"Неверный формат даты. Используйте ДД.ММ.ГГГГ (например, 25.12.2024)")
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 		return
 	}
 
@@ -740,7 +640,7 @@ func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateS
 	if date.Before(time.Now().AddDate(0, 0, -1)) {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 		return
 	}
 
@@ -753,11 +653,11 @@ func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateS
 	if date.After(maxDate) {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед (максимум до %s).", maxDays, maxDate.Format("02.01.2006")))
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 		return
 	}
 
-	itemID := b.getInt64FromTempData(state.TempData, "item_id")
+	itemID := state.GetInt64("item_id")
 	var item models.Item
 	for _, it := range b.items {
 		if it.ID == itemID {
@@ -773,19 +673,19 @@ func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateS
 	}
 
 	// Проверяем доступность
-	available, err := b.db.CheckAvailability(ctx, item.ID, date)
+	available, err := b.bookingService.CheckAvailability(ctx, item.ID, date)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("item_id", item.ID).Time("date", date).Msg("Error checking availability")
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"Произошла ошибка при проверке доступности. Попробуйте позже.")
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 		return
 	}
 
 	if !available {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"К сожалению, на выбранную дату позиция недоступна. Выберите другую дату.")
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 		return
 	}
 
@@ -855,8 +755,8 @@ func (b *Bot) handlePhoneReceived(ctx context.Context, update tgbotapi.Update, p
 	}
 
 	// Получаем данные из состояния
-	itemID := state.TempData["item_id"].(int64)
-	date := state.TempData["date"].(time.Time)
+	itemID := state.GetInt64("item_id")
+	date := state.GetTime("date")
 
 	// Находим выбранный элемент по ID
 	var selectedItem models.Item
@@ -883,11 +783,11 @@ func (b *Bot) handlePhoneReceived(ctx context.Context, update tgbotapi.Update, p
 	b.updateUserPhone(update.Message.From.ID, normalizedPhone)
 
 	// Проверяем доступность еще раз
-	available, err := b.db.CheckAvailability(ctx, selectedItem.ID, date)
+	available, err := b.bookingService.CheckAvailability(ctx, selectedItem.ID, date)
 	if err != nil || !available {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"К сожалению, выбранная позиция больше не доступна на эту дату. Пожалуйста, начните заново.")
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 		b.handleMainMenu(ctx, update)
 		return
 	}
@@ -919,7 +819,7 @@ func (b *Bot) handlePhoneReceived(ctx context.Context, update tgbotapi.Update, p
 	// )
 	// msg.ReplyMarkup = keyboard
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 	b.finalizeBooking(ctx, update)
 }
 

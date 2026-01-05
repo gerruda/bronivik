@@ -271,7 +271,7 @@ func getLastColumn(colCount int) string {
 }
 
 // exportUsersToExcel создает Excel файл с данными пользователей
-func (b *Bot) exportUsersToExcel(ctx context.Context, users []models.User) (string, error) {
+func (b *Bot) exportUsersToExcel(ctx context.Context, users []*models.User) (string, error) {
 	// Создаем папку для экспорта, если не существует
 	if err := os.MkdirAll(b.config.Exports.Path, 0755); err != nil {
 		return "", fmt.Errorf("error creating export directory: %v", err)

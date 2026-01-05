@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"bronivik/internal/models"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -79,12 +80,12 @@ func (b *Bot) renderPaginatedList(params PaginationParams, totalCount int, items
 			markup,
 		)
 		editMsg.ParseMode = "Markdown"
-		b.bot.Send(editMsg)
+		b.tgService.Send(editMsg)
 	} else {
 		msg := tgbotapi.NewMessage(params.ChatID, message.String())
 		msg.ReplyMarkup = markup
 		msg.ParseMode = "Markdown"
-		b.bot.Send(msg)
+		b.tgService.Send(msg)
 	}
 }
 
@@ -117,7 +118,7 @@ func (b *Bot) renderPaginatedItems(params PaginationParams) {
 }
 
 // renderPaginatedBookings - обертка для списка заявок
-func (b *Bot) renderPaginatedBookings(params PaginationParams, bookings []*models.Booking) {
+func (b *Bot) renderPaginatedBookings(params PaginationParams, bookings []models.Booking) {
 	b.renderPaginatedList(params, len(bookings), 5, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
 		var content strings.Builder
 		var keyboard [][]tgbotapi.InlineKeyboardButton

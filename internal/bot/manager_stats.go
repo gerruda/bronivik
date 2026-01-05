@@ -98,7 +98,7 @@ func (b *Bot) getUserStats(ctx context.Context, update tgbotapi.Update) {
 	)
 	msg.ReplyMarkup = &keyboard
 
-	b.bot.Send(msg)
+	b.tgService.Send(msg)
 }
 
 // bookingSummary агрегирует заявки за период в компактный блок: всего, статусы, топ-товары.
@@ -172,7 +172,13 @@ func (b *Bot) handleExportUsers(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	filePath, err := b.exportUsersToExcel(ctx, users)
+	// Convert to slice of pointers for export function
+	userPointers := make([]*models.User, len(users))
+	for i := range users {
+		userPointers[i] = &users[i]
+	}
+
+	filePath, err := b.exportUsersToExcel(ctx, userPointers)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Error exporting users to Excel")
 		b.sendMessage(callback.Message.Chat.ID, "Ошибка при создании файла экспорта")
@@ -196,7 +202,7 @@ func (b *Bot) handleExportUsers(ctx context.Context, update tgbotapi.Update) {
 	doc := tgbotapi.NewDocument(callback.Message.Chat.ID, fileReader)
 	doc.Caption = "📊 Экспорт данных пользователей"
 
-	_, err = b.bot.Send(doc)
+	_, err = b.tgService.Send(doc)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Error sending document")
 		b.sendMessage(callback.Message.Chat.ID, "Ошибка при отправке файла")
