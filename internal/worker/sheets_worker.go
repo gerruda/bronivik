@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"bronivik/internal/database"
-	gservice "bronivik/internal/google"
 	"bronivik/internal/models"
 	"github.com/redis/go-redis/v9"
 )
@@ -37,9 +36,15 @@ type sheetTaskPayload struct {
 }
 
 // SheetsWorker consumes sync_queue tasks and applies them to Google Sheets.
+type SheetsClient interface {
+	UpsertBooking(*models.Booking) error
+	DeleteBookingRow(int64) error
+	UpdateBookingStatus(int64, string) error
+}
+
 type SheetsWorker struct {
 	db            *database.DB
-	sheets        *gservice.SheetsService
+	sheets        SheetsClient
 	redis         *redis.Client
 	retryPolicy   RetryPolicy
 	queue         chan models.SyncTask
@@ -51,7 +56,7 @@ type SheetsWorker struct {
 }
 
 // NewSheetsWorker builds a worker with sane defaults.
-func NewSheetsWorker(db *database.DB, sheets *gservice.SheetsService, redisClient *redis.Client, retry RetryPolicy, logger *log.Logger) *SheetsWorker {
+func NewSheetsWorker(db *database.DB, sheets SheetsClient, redisClient *redis.Client, retry RetryPolicy, logger *log.Logger) *SheetsWorker {
 	if retry.MaxRetries == 0 {
 		retry.MaxRetries = 5
 	}

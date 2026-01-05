@@ -974,6 +974,10 @@ bronivik_crm/
   - `worker_test.go` — тесты очереди задач
   - `retry_test.go` — тесты retry логики
 
+- [x] **Тесты для worker**
+  - `worker_test.go` — тесты очереди задач
+  - `retry_test.go` — тесты retry логики
+
 ### 3.2.2 Integration тесты
 - [ ] **E2E тесты**
   - Сценарий бронирования от начала до конца
