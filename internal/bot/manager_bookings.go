@@ -10,6 +10,7 @@ import (
 
 	"bronivik/internal/database"
 	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -80,15 +81,9 @@ func (b *Bot) handleManagerItemSelection(ctx context.Context, update tgbotapi.Up
 		return
 	}
 
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
+	selectedItem, ok := b.getItemByID(itemID)
 
-	if selectedItem.ID == 0 {
+	if !ok {
 		b.sendMessage(callback.Message.Chat.ID, "Аппарат не найден")
 		return
 	}
@@ -158,20 +153,21 @@ func (b *Bot) handleManagerSingleDate(ctx context.Context, update tgbotapi.Updat
 		return
 	}
 
-	// Проверяем, что дата не в прошлом
-	if date.Before(time.Now().AddDate(0, 0, -1)) {
-		b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
-		return
-	}
-
-	// Проверяем максимальную дату (из конфига)
-	maxDays := b.config.Bot.MaxBookingDays
-	if maxDays == 0 {
-		maxDays = 365
-	}
-	maxDate := time.Now().AddDate(0, 0, maxDays)
-	if date.After(maxDate) {
-		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед (максимум до %s).", maxDays, maxDate.Format("02.01.2006")))
+	// Валидация даты через сервис
+	if err := b.bookingService.ValidateBookingDate(date); err != nil {
+		if errors.Is(err, database.ErrPastDate) {
+			b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
+			return
+		}
+		if errors.Is(err, database.ErrDateTooFar) {
+			maxDays := b.config.Bot.MaxBookingDays
+			if maxDays == 0 {
+				maxDays = 365
+			}
+			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
+			return
+		}
+		b.sendMessage(update.Message.Chat.ID, "Ошибка валидации даты.")
 		return
 	}
 
@@ -189,20 +185,21 @@ func (b *Bot) handleManagerStartDate(ctx context.Context, update tgbotapi.Update
 		return
 	}
 
-	// Проверяем, что дата не в прошлом
-	if startDate.Before(time.Now().AddDate(0, 0, -1)) {
-		b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
-		return
-	}
-
-	// Проверяем максимальную дату (из конфига)
-	maxDays := b.config.Bot.MaxBookingDays
-	if maxDays == 0 {
-		maxDays = 365
-	}
-	maxDate := time.Now().AddDate(0, 0, maxDays)
-	if startDate.After(maxDate) {
-		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед (максимум до %s).", maxDays, maxDate.Format("02.01.2006")))
+	// Валидация даты через сервис
+	if err := b.bookingService.ValidateBookingDate(startDate); err != nil {
+		if errors.Is(err, database.ErrPastDate) {
+			b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
+			return
+		}
+		if errors.Is(err, database.ErrDateTooFar) {
+			maxDays := b.config.Bot.MaxBookingDays
+			if maxDays == 0 {
+				maxDays = 365
+			}
+			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
+			return
+		}
+		b.sendMessage(update.Message.Chat.ID, "Ошибка валидации даты.")
 		return
 	}
 
@@ -228,15 +225,17 @@ func (b *Bot) handleManagerEndDate(ctx context.Context, update tgbotapi.Update, 
 		return
 	}
 
-	// Проверяем максимальную дату (из конфига)
-	maxDays := b.config.Bot.MaxBookingDays
-	if maxDays == 0 {
-		maxDays = 365
-	}
-	maxDate := time.Now().AddDate(0, 0, maxDays)
-	if endDate.After(maxDate) {
-		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед (максимум до %s).", maxDays, maxDate.Format("02.01.2006")))
-		return
+	// Валидация даты через сервис
+	if err := b.bookingService.ValidateBookingDate(endDate); err != nil {
+		if errors.Is(err, database.ErrDateTooFar) {
+			maxDays := b.config.Bot.MaxBookingDays
+			if maxDays == 0 {
+				maxDays = 365
+			}
+			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
+			return
+		}
+		// Past date check is not strictly needed here if startDate was valid, but good for consistency
 	}
 
 	// Ограничиваем интервал (например, максимум 31 день за раз)
@@ -271,13 +270,7 @@ func (b *Bot) showManagerBookingConfirmation(ctx context.Context, update tgbotap
 	clientName := state.TempData["client_name"].(string)
 	clientPhone := state.TempData["client_phone"].(string)
 	itemID := state.GetInt64("item_id")
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
+	selectedItem, _ := b.getItemByID(itemID)
 	dates := state.GetDates("dates")
 	comment := state.TempData["comment"].(string)
 	dateType := state.TempData["date_type"].(string)
@@ -318,13 +311,7 @@ func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update,
 	clientName := state.TempData["client_name"].(string)
 	clientPhone := state.TempData["client_phone"].(string)
 	itemID := state.GetInt64("item_id")
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
+	selectedItem, _ := b.getItemByID(itemID)
 	dates := state.GetDates("dates")
 	comment := state.TempData["comment"].(string)
 
@@ -334,7 +321,7 @@ func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update,
 	// Создаем заявки на каждую дату
 	for _, date := range dates {
 		// Проверяем доступность
-		available, err := b.db.CheckAvailability(ctx, selectedItem.ID, date)
+		available, err := b.bookingService.CheckAvailability(ctx, selectedItem.ID, date)
 		if err != nil {
 			b.logger.Error().Err(err).Int64("item_id", selectedItem.ID).Time("date", date).Msg("Error checking availability")
 			failedDates = append(failedDates, date.Format("02.01.2006"))
@@ -418,7 +405,7 @@ func (b *Bot) sendManagerBookingsPage(ctx context.Context, chatID int64, message
 	startDate := time.Now().AddDate(0, 0, -7) // 7 дней назад
 	endDate := time.Now().AddDate(0, 2, 0)    // 2 месяца вперед
 
-	bookings, err := b.db.GetBookingsByDateRange(ctx, startDate, endDate)
+	bookings, err := b.bookingService.GetBookingsByDateRange(ctx, startDate, endDate)
 	if err != nil {
 		b.logger.Error().Err(err).Time("start_date", startDate).Time("end_date", endDate).Msg("Error getting bookings")
 		b.sendMessage(chatID, "Ошибка при получении заявок")
@@ -450,7 +437,7 @@ func (b *Bot) showManagerBookingDetail(ctx context.Context, update tgbotapi.Upda
 		return
 	}
 
-	booking, err := b.db.GetBooking(ctx, bookingID)
+	booking, err := b.bookingService.GetBooking(ctx, bookingID)
 	if err != nil {
 		b.sendMessage(update.Message.Chat.ID, "Заявка не найдена")
 		return
@@ -464,8 +451,15 @@ func (b *Bot) startChangeItem(ctx context.Context, booking *models.Booking, mana
 	msg := tgbotapi.NewMessage(managerChatID,
 		"Выберите новый аппарат для заявки #"+strconv.FormatInt(booking.ID, 10)+":")
 
+	items, err := b.itemService.GetActiveItems(ctx)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Error getting active items")
+		b.sendMessage(managerChatID, "Ошибка при получении списка аппаратов")
+		return
+	}
+
 	var keyboardRows [][]tgbotapi.InlineKeyboardButton
-	for _, item := range b.items {
+	for _, item := range items {
 		row := tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(item.Name,
 				fmt.Sprintf("change_to_%d_%d", booking.ID, item.ID)),
@@ -494,21 +488,15 @@ func (b *Bot) handleChangeItem(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Находим выбранный аппарат
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
+	selectedItem, ok := b.getItemByID(itemID)
 
-	if selectedItem.ID == 0 {
+	if !ok {
 		b.sendMessage(callback.Message.Chat.ID, "Аппарат не найден")
 		return
 	}
 
 	// Получаем текущую заявку для версии
-	booking, err := b.db.GetBooking(ctx, bookingID)
+	booking, err := b.bookingService.GetBooking(ctx, bookingID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("booking_id", bookingID).Msg("Error getting booking")
 		b.sendMessage(callback.Message.Chat.ID, "Ошибка при получении заявки")
@@ -541,7 +529,7 @@ func (b *Bot) handleChangeItem(ctx context.Context, update tgbotapi.Update) {
 	b.sendMessage(callback.Message.Chat.ID, "✅ Аппарат успешно изменен")
 
 	// ВМЕСТО ВЫЗОВА showManagerBookingDetail, который требует Message, используем sendManagerBookingDetail
-	updatedBooking, err := b.db.GetBooking(ctx, bookingID)
+	updatedBooking, err := b.bookingService.GetBooking(ctx, bookingID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("booking_id", bookingID).Msg("Error getting updated booking")
 		return
@@ -803,7 +791,7 @@ func (b *Bot) handleCallButton(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Получаем заявку из базы данных
-	booking, err := b.db.GetBooking(ctx, bookingID)
+	booking, err := b.bookingService.GetBooking(ctx, bookingID)
 	if err != nil {
 		b.sendMessage(callback.Message.Chat.ID, "❌ Заявка не найдена")
 		b.tgService.Send(tgbotapi.NewCallback(callback.ID, "❌ Заявка не найдена"))
@@ -820,7 +808,7 @@ func (b *Bot) handleCallButton(ctx context.Context, update tgbotapi.Update) {
 	formattedPhone := b.formatPhoneForDisplay(booking.Phone)
 
 	// Создаем информативное сообщение
-	message := fmt.Sprintf("📞 *Информация для связи*\n\n")
+	message := "📞 *Информация для связи*\n\n"
 	message += fmt.Sprintf("👤 *Клиент:* %s\n", booking.UserName)
 	message += fmt.Sprintf("📱 *Телефон:* `%s`\n", formattedPhone)
 	message += fmt.Sprintf("🏢 *Аппарат:* %s\n", booking.ItemName)

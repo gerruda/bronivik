@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
@@ -9,13 +10,15 @@ import (
 	"time"
 
 	"bronivik/internal/config"
+
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog"
 )
 
 type BackupService struct {
-	dbPath      string
-	config      config.BackupConfig
-	logger      *zerolog.Logger
+	dbPath string
+	config config.BackupConfig
+	logger *zerolog.Logger
 }
 
 func NewBackupService(dbPath string, cfg config.BackupConfig, logger *zerolog.Logger) *BackupService {
@@ -34,9 +37,16 @@ func (s *BackupService) Start(ctx context.Context) {
 
 	s.logger.Info().Str("schedule", s.config.Schedule).Msg("Backup service started")
 
-	// For simplicity, we'll run backup every 24 hours if schedule is not parsed
-	// In a real app, we'd use a cron parser
-	ticker := time.NewTicker(24 * time.Hour)
+	interval := 24 * time.Hour
+	if s.config.Schedule != "" {
+		if d, err := time.ParseDuration(s.config.Schedule); err == nil {
+			interval = d
+		} else {
+			s.logger.Warn().Err(err).Str("schedule", s.config.Schedule).Msg("Failed to parse backup schedule, using default 24h")
+		}
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	// Run first backup immediately
@@ -68,8 +78,26 @@ func (s *BackupService) PerformBackup() error {
 	backupFileName := fmt.Sprintf("backup_%s.db", timestamp)
 	backupPath := filepath.Join(s.config.StoragePath, backupFileName)
 
-	s.logger.Info().Str("path", backupPath).Msg("Performing database backup")
+	s.logger.Info().Str("path", backupPath).Msg("Performing database backup using VACUUM INTO")
 
+	db, err := sql.Open("sqlite3", s.dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source database: %w", err)
+	}
+	defer db.Close()
+
+	// Use VACUUM INTO for a safe online backup
+	_, err = db.Exec(fmt.Sprintf("VACUUM INTO '%s'", backupPath))
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("VACUUM INTO failed, falling back to file copy")
+		return s.performBackupFallback(backupPath)
+	}
+
+	s.logger.Info().Msg("Backup completed successfully")
+	return nil
+}
+
+func (s *BackupService) performBackupFallback(backupPath string) error {
 	source, err := os.Open(s.dbPath)
 	if err != nil {
 		return err
@@ -82,12 +110,13 @@ func (s *BackupService) PerformBackup() error {
 	}
 	defer destination.Close()
 
+	// Note: io.Copy is not atomic for SQLite and might result in a corrupted backup if writes occur
 	_, err = io.Copy(destination, source)
 	if err != nil {
 		return err
 	}
 
-	s.logger.Info().Msg("Backup completed successfully")
+	s.logger.Info().Msg("Fallback backup completed successfully")
 	return nil
 }
 

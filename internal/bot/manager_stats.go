@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -19,15 +20,15 @@ func (b *Bot) getUserStats(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	allUsers, err := b.db.GetAllUsers(ctx)
+	allUsers, err := b.userService.GetAllUsers(ctx)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Error getting all users")
 		b.sendMessage(update.Message.Chat.ID, "Ошибка при получении данных")
 		return
 	}
 
-	activeUsers, _ := b.db.GetActiveUsers(ctx, 30)
-	managers, _ := b.db.GetUsersByManagerStatus(ctx, true)
+	activeUsers, _ := b.userService.GetActiveUsers(ctx, 30)
+	managers, _ := b.userService.GetManagers(ctx)
 
 	blacklistedCount := 0
 	for _, user := range allUsers {
@@ -103,7 +104,7 @@ func (b *Bot) getUserStats(ctx context.Context, update tgbotapi.Update) {
 
 // bookingSummary агрегирует заявки за период в компактный блок: всего, статусы, топ-товары.
 func (b *Bot) bookingSummary(ctx context.Context, startDate, endDate time.Time) string {
-	bookings, err := b.db.GetBookingsByDateRange(ctx, startDate, endDate)
+	bookings, err := b.bookingService.GetBookingsByDateRange(ctx, startDate, endDate)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("bookingSummary error")
 		return "ошибка"
@@ -165,7 +166,7 @@ func (b *Bot) handleExportUsers(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	users, err := b.db.GetAllUsers(ctx)
+	users, err := b.userService.GetAllUsers(ctx)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Error getting users for export")
 		b.sendMessage(callback.Message.Chat.ID, "Ошибка при получении данных пользователей")

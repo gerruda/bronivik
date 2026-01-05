@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -27,7 +28,7 @@ func (b *Bot) renderPaginatedList(params PaginationParams, totalCount int, items
 		itemsPerPage = b.config.Bot.PaginationSize
 	}
 	if itemsPerPage <= 0 {
-		itemsPerPage = 8
+		itemsPerPage = models.DefaultPaginationSize
 	}
 
 	startIdx := params.Page * itemsPerPage
@@ -91,11 +92,18 @@ func (b *Bot) renderPaginatedList(params PaginationParams, totalCount int, items
 
 // renderPaginatedItems - обертка для списка аппаратов
 func (b *Bot) renderPaginatedItems(params PaginationParams) {
-	b.renderPaginatedList(params, len(b.items), 8, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
+	items, err := b.itemService.GetActiveItems(params.Ctx)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Error getting active items for pagination")
+		b.sendMessage(params.ChatID, "Ошибка при получении списка аппаратов")
+		return
+	}
+
+	b.renderPaginatedList(params, len(items), 8, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
 		var content strings.Builder
 		var keyboard [][]tgbotapi.InlineKeyboardButton
 
-		currentItems := b.items[startIdx:endIdx]
+		currentItems := items[startIdx:endIdx]
 		for i, item := range currentItems {
 			content.WriteString(fmt.Sprintf("%d. *%s*\n", startIdx+i+1, item.Name))
 			if item.Description != "" {

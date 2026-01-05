@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/rs/zerolog"
 )
@@ -115,7 +116,7 @@ func (b *Bot) handleStartWithUserTracking(ctx context.Context, update tgbotapi.U
 		CreatedAt:    time.Now(),
 	}
 
-	err := b.db.CreateOrUpdateUser(ctx, user)
+	err := b.userService.SaveUser(ctx, user)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("user_id", user.TelegramID).Msg("Error tracking user")
 	}
@@ -126,7 +127,7 @@ func (b *Bot) handleStartWithUserTracking(ctx context.Context, update tgbotapi.U
 func (b *Bot) updateUserActivity(userID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := b.db.UpdateUserActivity(ctx, userID)
+	err := b.userService.UpdateUserActivity(ctx, userID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("user_id", userID).Msg("Error updating user activity")
 	}
@@ -135,7 +136,7 @@ func (b *Bot) updateUserActivity(userID int64) {
 func (b *Bot) updateUserPhone(userID int64, phone string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := b.db.UpdateUserPhone(ctx, userID, phone)
+	err := b.userService.UpdateUserPhone(ctx, userID, phone)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("user_id", userID).Msg("Error updating user phone")
 	}

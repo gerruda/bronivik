@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"bronivik/internal/models"
+
 	"github.com/xuri/excelize/v2"
 )
 
@@ -19,12 +20,15 @@ func (b *Bot) exportToExcel(ctx context.Context, startDate, endDate time.Time) (
 	}
 
 	// Получаем данные из БД
-	dailyBookings, err := b.db.GetDailyBookings(ctx, startDate, endDate)
+	dailyBookings, err := b.bookingService.GetDailyBookings(ctx, startDate, endDate)
 	if err != nil {
 		return "", fmt.Errorf("error getting bookings: %v", err)
 	}
 
-	items := b.items
+	items, err := b.itemService.GetActiveItems(ctx)
+	if err != nil {
+		return "", fmt.Errorf("error getting active items: %v", err)
+	}
 
 	// Создаем новый Excel файл
 	f := excelize.NewFile()
@@ -98,7 +102,7 @@ func (b *Bot) exportToExcel(ctx context.Context, startDate, endDate time.Time) (
 			itemBookings := bookingsByItem[item.ID]
 
 			// Получаем количество занятых аппаратов (только активные заявки)
-			bookedCount, err := b.db.GetBookedCount(ctx, item.ID, parseDate(dateKey))
+			bookedCount, err := b.bookingService.GetBookedCount(ctx, item.ID, parseDate(dateKey))
 			if err != nil {
 				b.logger.Error().Err(err).Int64("item_id", item.ID).Str("date", dateKey).Msg("Error getting booked count")
 				bookedCount = 0

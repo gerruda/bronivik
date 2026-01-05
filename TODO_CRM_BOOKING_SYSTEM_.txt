@@ -1122,9 +1122,9 @@ bronivik_crm/
   - utils.go (вспомогательные функции)
 
 ### 5.2.4 Устранить дублирование кода
-- [ ] **Пагинация в manager.go**
-  - `sendItemsPage`, `sendManagerItemsPage`, `sendScheduleItemsPage` — почти идентичны
-  - Решение: Создать generic pagination component
+- [x] **Пагинация в manager.go**
+  - [x] Использовать константу DefaultPaginationSize
+  - [x] Использовать универсальный компонент renderPaginatedList
 - [ ] **Редактирование страниц**
   - `editItemsPage`, `editScheduleItemsPage`, `editManagerItemsPage`
   - Решение: Извлечь общую логику
@@ -1160,17 +1160,15 @@ bronivik_crm/
 
 ### 5.4.1 Валидация входных данных
 - [x] **internal/bot/handler.go: handleDateInput**
-  - Нет проверки максимальной даты бронирования
-  - Можно бронировать на годы вперед
+  - [x] Проверка максимальной даты бронирования через BookingService
 - [x] **internal/bot/manager.go: handleManagerClientName**
-  - Нет санитизации имени клиента
+  - [x] Санитизация имени клиента
 - [x] **internal/api/http_server.go: handleAvailability**
-  - Имя товара из URL не санитизируется
+  - [x] Имя товара санитизируется (через GetItemByName)
 
 ### 5.4.2 Конфигурация
 - [x] **Переместить API ключи в переменные окружения**
-  - Сейчас: хранятся в plain text в config.yaml
-  - Решение: Использовать ${API_KEY} синтаксис
+  - [x] Использование os.ExpandEnv в загрузке конфига
 
 ### 5.4.3 Защита от DDoS/спама
 - [ ] **Добавить rate limiting для обычных пользователей**
@@ -1325,9 +1323,9 @@ bronivik_crm/
   - .git, .env, *.md, tests/
 
 ### 5.9.4 Бэкапы
-- [ ] **Реализовать автобэкап SQLite**
-  - Конфиг есть (backup.schedule), но нет реализации
-  - Добавить cron-job или goroutine для бэкапа
+- [x] **Реализовать автобэкап SQLite**
+  - [x] Использование VACUUM INTO для безопасного бэкапа
+  - [x] Поддержка расписания из конфига (backup.schedule)
 
 ---
 

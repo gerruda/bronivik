@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -25,12 +26,11 @@ func (b *Bot) handleAddItemCommand(ctx context.Context, update tgbotapi.Update) 
 
 	name := b.sanitizeInput(strings.Join(parts[1:len(parts)-1], " "))
 	item := &models.Item{Name: name, TotalQuantity: qty}
-	if err := b.db.CreateItem(ctx, item); err != nil {
+	if err := b.itemService.CreateItem(ctx, item); err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Не удалось создать аппарат: %v", err))
 		return
 	}
 
-	b.refreshItemsFromDB(ctx)
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("✅ Аппарат '%s' добавлен (кол-во: %d, порядок: %d)", item.Name, item.TotalQuantity, item.SortOrder))
 }
 
@@ -47,25 +47,24 @@ func (b *Bot) handleEditItemCommand(ctx context.Context, update tgbotapi.Update)
 		return
 	}
 
-	name := strings.Join(parts[1:len(parts)-1], " ")
-	current, err := b.db.GetItemByName(ctx, name)
+	name := b.sanitizeInput(strings.Join(parts[1:len(parts)-1], " "))
+	current, err := b.itemService.GetItemByName(ctx, name)
 	if err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Аппарат '%s' не найден", name))
 		return
 	}
 
 	current.TotalQuantity = qty
-	if err := b.db.UpdateItem(ctx, current); err != nil {
+	if err := b.itemService.UpdateItem(ctx, current); err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Не удалось обновить аппарат: %v", err))
 		return
 	}
 
-	b.refreshItemsFromDB(ctx)
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("✅ Аппарат '%s' обновлён (кол-во: %d)", current.Name, current.TotalQuantity))
 }
 
 func (b *Bot) handleListItemsCommand(ctx context.Context, update tgbotapi.Update) {
-	items, err := b.db.GetActiveItems(ctx)
+	items, err := b.itemService.GetActiveItems(ctx)
 	if err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Ошибка загрузки списка: %v", err))
 		return
@@ -92,19 +91,18 @@ func (b *Bot) handleDisableItemCommand(ctx context.Context, update tgbotapi.Upda
 		return
 	}
 
-	name := strings.Join(parts[1:], " ")
-	item, err := b.db.GetItemByName(ctx, name)
+	name := b.sanitizeInput(strings.Join(parts[1:], " "))
+	item, err := b.itemService.GetItemByName(ctx, name)
 	if err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Аппарат '%s' не найден", name))
 		return
 	}
 
-	if err := b.db.DeactivateItem(ctx, item.ID); err != nil {
+	if err := b.itemService.DeactivateItem(ctx, item.ID); err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Не удалось отключить аппарат: %v", err))
 		return
 	}
 
-	b.refreshItemsFromDB(ctx)
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("🛑 Аппарат '%s' деактивирован", item.Name))
 }
 
@@ -121,19 +119,18 @@ func (b *Bot) handleSetItemOrderCommand(ctx context.Context, update tgbotapi.Upd
 		return
 	}
 
-	name := strings.Join(parts[1:len(parts)-1], " ")
-	item, err := b.db.GetItemByName(ctx, name)
+	name := b.sanitizeInput(strings.Join(parts[1:len(parts)-1], " "))
+	item, err := b.itemService.GetItemByName(ctx, name)
 	if err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Аппарат '%s' не найден", name))
 		return
 	}
 
-	if err := b.db.ReorderItem(ctx, item.ID, order); err != nil {
+	if err := b.itemService.ReorderItem(ctx, item.ID, order); err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Не удалось изменить порядок: %v", err))
 		return
 	}
 
-	b.refreshItemsFromDB(ctx)
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("↕️ Порядок '%s' установлен на %d", item.Name, order))
 }
 
@@ -145,7 +142,7 @@ func (b *Bot) handleMoveItemCommand(ctx context.Context, update tgbotapi.Update,
 	}
 
 	name := strings.Join(parts[1:], " ")
-	item, err := b.db.GetItemByName(ctx, name)
+	item, err := b.itemService.GetItemByName(ctx, name)
 	if err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Аппарат '%s' не найден", name))
 		return
@@ -156,27 +153,16 @@ func (b *Bot) handleMoveItemCommand(ctx context.Context, update tgbotapi.Update,
 		newOrder = 1
 	}
 
-	if err := b.db.ReorderItem(ctx, item.ID, newOrder); err != nil {
+	if err := b.itemService.ReorderItem(ctx, item.ID, newOrder); err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Не удалось изменить порядок: %v", err))
 		return
 	}
 
-	b.refreshItemsFromDB(ctx)
 	direction := "вверх"
 	if delta > 0 {
 		direction = "вниз"
 	}
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("↕️ Аппарат '%s' перемещён %s (новый порядок: %d)", item.Name, direction, newOrder))
-}
-
-func (b *Bot) refreshItemsFromDB(ctx context.Context) {
-	items, err := b.db.GetActiveItems(ctx)
-	if err != nil {
-		b.logger.Error().Err(err).Msg("failed to refresh items")
-		return
-	}
-	b.items = items
-	b.db.SetItems(items)
 }
 
 // editManagerItemsPage редактирует страницу с аппаратами для менеджера

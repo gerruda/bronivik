@@ -10,6 +10,7 @@ import (
 	"bronivik/internal/database"
 	"bronivik/internal/events"
 	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -43,21 +44,19 @@ func (b *Bot) clearUserState(ctx context.Context, userID int64) {
 }
 
 func (b *Bot) isBlacklisted(userID int64) bool {
-	for _, blacklistedID := range b.config.Blacklist {
-		if userID == blacklistedID {
-			return true
-		}
-	}
-	return false
+	return b.userService.IsBlacklisted(userID)
 }
 
 func (b *Bot) isManager(userID int64) bool {
-	for _, managerID := range b.config.Managers {
-		if userID == managerID {
-			return true
-		}
+	return b.userService.IsManager(userID)
+}
+
+func (b *Bot) getItemByID(id int64) (models.Item, bool) {
+	item, err := b.itemService.GetItemByID(context.Background(), id)
+	if err != nil {
+		return models.Item{}, false
 	}
-	return false
+	return *item, true
 }
 
 func (b *Bot) sendMessage(chatID int64, text string) {
@@ -164,7 +163,7 @@ func (b *Bot) showManagerContacts(ctx context.Context, update tgbotapi.Update) {
 
 // showUserBookings показывает заявки пользователя
 func (b *Bot) showUserBookings(ctx context.Context, update tgbotapi.Update) {
-	bookings, err := b.db.GetUserBookings(ctx, update.Message.From.ID)
+	bookings, err := b.userService.GetUserBookings(ctx, update.Message.From.ID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("user_id", update.Message.From.ID).Msg("Error getting user bookings")
 		b.sendMessage(update.Message.Chat.ID, "Ошибка при получении заявок")
@@ -309,15 +308,9 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Находим элемент по ID
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
+	selectedItem, ok := b.getItemByID(itemID)
 
-	if selectedItem.ID == 0 {
+	if !ok {
 		b.sendMessage(update.Message.Chat.ID, "Ошибка: выбранная позиция не найдена.")
 		b.handleMainMenu(ctx, update)
 		return
@@ -455,7 +448,12 @@ func (b *Bot) sendItemsPage(ctx context.Context, chatID int64, messageID int, pa
 
 // showAvailableItems показывает доступные позиции
 func (b *Bot) showAvailableItems(ctx context.Context, update tgbotapi.Update) {
-	items := b.items
+	items, err := b.itemService.GetActiveItems(ctx)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Error getting active items")
+		b.sendMessage(update.Message.Chat.ID, "Ошибка при получении списка аппаратов")
+		return
+	}
 	var message strings.Builder
 	message.WriteString("🏢 Доступные позиции:\n\n")
 
@@ -488,12 +486,10 @@ func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Upda
 	}
 
 	itemID := state.GetInt64("item_id")
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
+	selectedItem, ok := b.getItemByID(itemID)
+	if !ok {
+		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не найден")
+		return
 	}
 	startDate := time.Now()
 
@@ -546,12 +542,10 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 	}
 
 	itemID := state.GetInt64("item_id")
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
+	selectedItem, ok := b.getItemByID(itemID)
+	if !ok {
+		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не найден")
+		return
 	}
 
 	date, err := time.Parse("02.01.2006", dateStr)
@@ -574,7 +568,7 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 		status = "❌ Недоступно"
 	}
 
-	booked, _ := b.db.GetBookedCount(ctx, selectedItem.ID, date)
+	booked, _ := b.bookingService.GetBookedCount(ctx, selectedItem.ID, date)
 	message := fmt.Sprintf("📅 Доступность *%s* на %s:\n\n%s\n\nЗабронировано: %d/%d",
 		selectedItem.Name,
 		date.Format("02.01.2006"),
@@ -636,37 +630,28 @@ func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateS
 		return
 	}
 
-	// Проверяем, что дата не в прошлом
-	if date.Before(time.Now().AddDate(0, 0, -1)) {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-			"Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
-		b.tgService.Send(msg)
-		return
-	}
-
-	// Проверяем максимальную дату (из конфига)
-	maxDays := b.config.Bot.MaxBookingDays
-	if maxDays == 0 {
-		maxDays = 365
-	}
-	maxDate := time.Now().AddDate(0, 0, maxDays)
-	if date.After(maxDate) {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-			fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед (максимум до %s).", maxDays, maxDate.Format("02.01.2006")))
-		b.tgService.Send(msg)
+	// Валидация даты через сервис
+	if err := b.bookingService.ValidateBookingDate(date); err != nil {
+		if errors.Is(err, database.ErrPastDate) {
+			b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
+			return
+		}
+		if errors.Is(err, database.ErrDateTooFar) {
+			maxDays := b.config.Bot.MaxBookingDays
+			if maxDays == 0 {
+				maxDays = 365
+			}
+			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
+			return
+		}
+		b.sendMessage(update.Message.Chat.ID, "Ошибка валидации даты.")
 		return
 	}
 
 	itemID := state.GetInt64("item_id")
-	var item models.Item
-	for _, it := range b.items {
-		if it.ID == itemID {
-			item = it
-			break
-		}
-	}
+	item, ok := b.getItemByID(itemID)
 
-	if item.ID == 0 {
+	if !ok {
 		b.sendMessage(update.Message.Chat.ID, "Ошибка: не найден выбранный элемент. Начните заново.")
 		b.handleMainMenu(ctx, update)
 		return
@@ -759,15 +744,9 @@ func (b *Bot) handlePhoneReceived(ctx context.Context, update tgbotapi.Update, p
 	date := state.GetTime("date")
 
 	// Находим выбранный элемент по ID
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
+	selectedItem, ok := b.getItemByID(itemID)
 
-	if selectedItem.ID == 0 {
+	if !ok {
 		b.sendMessage(update.Message.Chat.ID, "Ошибка: выбранная позиция не найдена. Начните заново.")
 		b.handleMainMenu(ctx, update)
 		return
@@ -869,5 +848,5 @@ func (b *Bot) formatPhoneForDisplay(phone string) string {
 	}
 
 	// Возвращаем исходный номер, если форматирование не применимо
-return phone
+	return phone
 }

@@ -12,8 +12,8 @@ import (
 
 	"bronivik/internal/models"
 
-	"github.com/rs/zerolog"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/rs/zerolog"
 )
 
 type DB struct {
@@ -27,6 +27,8 @@ type DB struct {
 var (
 	ErrConcurrentModification = errors.New("concurrent modification")
 	ErrNotAvailable           = errors.New("not available")
+	ErrPastDate               = errors.New("cannot book in the past")
+	ErrDateTooFar             = errors.New("date is too far in the future")
 )
 
 func NewDB(path string, logger *zerolog.Logger) (*DB, error) {
@@ -117,7 +119,7 @@ func (db *DB) createTables() error {
 		`CREATE INDEX IF NOT EXISTS idx_items_sort ON items(sort_order, id)`,
 
 		// Уникальный индекс для предотвращения двойного бронирования (если количество = 1)
-		// Примечание: это работает только если TotalQuantity всегда 1. 
+		// Примечание: это работает только если TotalQuantity всегда 1.
 		// Если TotalQuantity > 1, логика должна быть сложнее (в коде через транзакции).
 		// Но для базовой защиты добавим индекс по (item_id, date, status)
 		`CREATE INDEX IF NOT EXISTS idx_bookings_item_date_status ON bookings(item_id, date, status)`,

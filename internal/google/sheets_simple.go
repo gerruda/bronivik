@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"bronivik/internal/models"
+
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -59,6 +60,17 @@ func NewSimpleSheetsService(credentialsFile, usersSheetID, bookingsSheetID strin
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		service.WarmUpCache(ctx)
+	}()
+
+	// Periodic cache refresh every 1 hour
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			service.WarmUpCache(ctx)
+			cancel()
+		}
 	}()
 
 	return service, nil

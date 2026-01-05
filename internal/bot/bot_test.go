@@ -1,16 +1,17 @@
 package bot
 
 import (
-"context"
-"io"
-"testing"
-"time"
+	"context"
+	"io"
+	"testing"
+	"time"
 
-"bronivik/internal/config"
-"bronivik/internal/domain"
-"bronivik/internal/models"
-tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-"github.com/rs/zerolog"
+	"bronivik/internal/config"
+	"bronivik/internal/domain"
+	"bronivik/internal/models"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/rs/zerolog"
 )
 
 type mockTelegramService struct {
@@ -32,6 +33,10 @@ func (m *mockTelegramService) GetSelf() tgbotapi.User {
 return tgbotapi.User{UserName: "test_bot"}
 }
 
+func (m *mockTelegramService) Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, error) {
+return &tgbotapi.APIResponse{Ok: true}, nil
+}
+
 type mockRepository struct {
 domain.Repository
 users map[int64]*models.User
@@ -46,6 +51,10 @@ return nil
 }
 
 func (m *mockRepository) UpdateUserActivity(ctx context.Context, telegramID int64) error {
+return nil
+}
+
+func (m *mockRepository) UpdateUserPhone(ctx context.Context, telegramID int64, phone string) error {
 return nil
 }
 
@@ -75,6 +84,20 @@ func (m *mockStateManager) CheckRateLimit(ctx context.Context, userID int64, lim
 return true, nil
 }
 
+type mockBookingService struct {
+domain.BookingService
+available bool
+}
+
+func (m *mockBookingService) CheckAvailability(ctx context.Context, itemID int64, date time.Time) (bool, error) {
+return m.available, nil
+}
+
+func (m *mockBookingService) CreateBooking(ctx context.Context, booking *models.Booking) error {
+booking.ID = 1
+return nil
+}
+
 func TestBotStart(t *testing.T) {
 tg := &mockTelegramService{updatesChan: make(chan tgbotapi.Update, 1)}
 repo := &mockRepository{users: make(map[int64]*models.User)}
@@ -82,10 +105,10 @@ state := &mockStateManager{states: make(map[int64]*models.UserState)}
 logger := zerolog.New(io.Discard)
 
 cfg := &config.Config{
-		Telegram: config.TelegramConfig{
-			BotToken: "test",
-		},
-	}
+Telegram: config.TelegramConfig{
+BotToken: "test",
+},
+}
 
 b, _ := NewBot(tg, cfg, nil, repo, state, nil, nil, nil, nil, &logger)
 
@@ -155,10 +178,6 @@ t.Errorf("expected message sent")
 }
 }
 
-func (m *mockTelegramService) Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, error) {
-return &tgbotapi.APIResponse{Ok: true}, nil
-}
-
 func TestHandleCallbackQuery(t *testing.T) {
 tg := &mockTelegramService{updatesChan: make(chan tgbotapi.Update, 1)}
 repo := &mockRepository{}
@@ -193,15 +212,6 @@ b.handleCallbackQuery(context.Background(), update)
 if state.states[123].CurrentStep != StateWaitingDate {
 t.Errorf("expected state %s, got %s", StateWaitingDate, state.states[123].CurrentStep)
 }
-}
-
-type mockBookingService struct {
-domain.BookingService
-available bool
-}
-
-func (m *mockBookingService) CheckAvailability(ctx context.Context, itemID int64, date time.Time) (bool, error) {
-return m.available, nil
 }
 
 func TestHandleDateInput(t *testing.T) {
@@ -284,5 +294,48 @@ t.Errorf("user data mismatch: %+v", user)
 
 if state.states[123].CurrentStep != StateMainMenu {
 t.Errorf("expected state %s, got %s", StateMainMenu, state.states[123].CurrentStep)
+}
+}
+
+func TestHandlePhoneReceived(t *testing.T) {
+tg := &mockTelegramService{updatesChan: make(chan tgbotapi.Update, 1)}
+repo := &mockRepository{}
+state := &mockStateManager{states: make(map[int64]*models.UserState)}
+logger := zerolog.New(io.Discard)
+
+items := []models.Item{
+{ID: 1, Name: "Item 1"},
+}
+
+cfg := &config.Config{
+Telegram: config.TelegramConfig{BotToken: "test"},
+}
+
+bookingSvc := &mockBookingService{available: true}
+
+b, _ := NewBot(tg, cfg, items, repo, state, nil, nil, nil, bookingSvc, &logger)
+
+state.states[123] = &models.UserState{
+UserID: 123,
+CurrentStep: StatePhoneNumber,
+TempData: map[string]interface{}{
+"item_id": int64(1),
+"date": time.Now().AddDate(0, 0, 5),
+"user_name": "Test User",
+},
+}
+
+update := tgbotapi.Update{
+Message: &tgbotapi.Message{
+From: &tgbotapi.User{ID: 123},
+Chat: &tgbotapi.Chat{ID: 123},
+Text: "89991234567",
+},
+}
+
+b.handleMessage(context.Background(), update)
+
+if state.states[123] == nil || state.states[123].CurrentStep != StateMainMenu {
+t.Errorf("expected state to be %s, but it is %v", StateMainMenu, state.states[123])
 }
 }

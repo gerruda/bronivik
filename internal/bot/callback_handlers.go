@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"bronivik/internal/models"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -69,15 +68,8 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, update tgbotapi.Update) {
 }
 
 func (b *Bot) handleDateSelection(ctx context.Context, update tgbotapi.Update, itemID int64) {
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
-
-	if selectedItem.ID == 0 {
+	selectedItem, err := b.itemService.GetItemByID(ctx, itemID)
+	if err != nil {
 		b.sendMessage(update.CallbackQuery.Message.Chat.ID, "Ошибка: аппарат не найден")
 		return
 	}
@@ -93,15 +85,8 @@ func (b *Bot) handleDateSelection(ctx context.Context, update tgbotapi.Update, i
 }
 
 func (b *Bot) handleScheduleItemSelected(ctx context.Context, update tgbotapi.Update, itemID int64) {
-	var selectedItem models.Item
-	for _, item := range b.items {
-		if item.ID == itemID {
-			selectedItem = item
-			break
-		}
-	}
-
-	if selectedItem.ID == 0 {
+	selectedItem, err := b.itemService.GetItemByID(ctx, itemID)
+	if err != nil {
 		b.sendMessage(update.CallbackQuery.Message.Chat.ID, "Ошибка: аппарат не найден")
 		return
 	}

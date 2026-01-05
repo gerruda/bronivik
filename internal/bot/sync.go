@@ -13,7 +13,7 @@ func (b *Bot) SyncUsersToSheets(ctx context.Context) {
 		return
 	}
 
-	users, err := b.db.GetAllUsers(ctx)
+	users, err := b.userService.GetAllUsers(ctx)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Failed to get users for Google Sheets sync")
 		return
@@ -57,7 +57,7 @@ func (b *Bot) SyncBookingsToSheets(ctx context.Context) {
 	startDate := time.Now().AddDate(0, -models.DefaultExportRangeMonthsBefore, 0)
 	endDate := time.Now().AddDate(0, models.DefaultExportRangeMonthsAfter, 0)
 
-	bookings, err := b.db.GetBookingsByDateRange(ctx, startDate, endDate)
+	bookings, err := b.bookingService.GetBookingsByDateRange(ctx, startDate, endDate)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Failed to get bookings for Google Sheets sync")
 		return
@@ -157,7 +157,7 @@ func (b *Bot) retryWithBackoff(ctx context.Context, op string, attempts int, bas
 				Int("attempt", i+1).
 				Int("max_attempts", attempts).
 				Msg("Operation attempt failed")
-			
+
 			select {
 			case <-ctx.Done():
 				return

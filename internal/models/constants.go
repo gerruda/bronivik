@@ -18,4 +18,10 @@ const (
 	// DefaultExportRangeMonths количество месяцев для экспорта по умолчанию
 	DefaultExportRangeMonthsBefore = 1
 	DefaultExportRangeMonthsAfter  = 2
+
+	// WorkerQueueSize размер очереди воркера
+	WorkerQueueSize = 1000
+
+	// DefaultPaginationSize размер пагинации по умолчанию
+	DefaultPaginationSize = 8
 )

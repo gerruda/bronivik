@@ -1,11 +1,11 @@
 package config
 
 import (
-"os"
-"path/filepath"
-"testing"
+	"os"
+	"path/filepath"
+	"testing"
 
-"bronivik/internal/models"
+	"bronivik/internal/models"
 )
 
 func TestLoadConfig(t *testing.T) {

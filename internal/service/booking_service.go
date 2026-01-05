@@ -14,22 +14,47 @@ import (
 )
 
 type BookingService struct {
-	repo         domain.Repository
-	eventBus     domain.EventPublisher
-	sheetsWorker domain.SyncWorker
-	logger       *zerolog.Logger
+	repo           domain.Repository
+	eventBus       domain.EventPublisher
+	sheetsWorker   domain.SyncWorker
+	maxBookingDays int
+	logger         *zerolog.Logger
 }
 
-func NewBookingService(repo domain.Repository, eventBus domain.EventPublisher, sheetsWorker domain.SyncWorker, logger *zerolog.Logger) *BookingService {
+func NewBookingService(repo domain.Repository, eventBus domain.EventPublisher, sheetsWorker domain.SyncWorker, maxBookingDays int, logger *zerolog.Logger) *BookingService {
+	if maxBookingDays <= 0 {
+		maxBookingDays = 365
+	}
 	return &BookingService{
-		repo:         repo,
-		eventBus:     eventBus,
-		sheetsWorker: sheetsWorker,
-		logger:       logger,
+		repo:           repo,
+		eventBus:       eventBus,
+		sheetsWorker:   sheetsWorker,
+		maxBookingDays: maxBookingDays,
+		logger:         logger,
 	}
 }
 
+func (s *BookingService) ValidateBookingDate(date time.Time) error {
+	// Проверяем, что дата не в прошлом
+	if date.Before(time.Now().AddDate(0, 0, -1)) {
+		return database.ErrPastDate
+	}
+
+	// Проверяем максимальную дату
+	maxDate := time.Now().AddDate(0, 0, s.maxBookingDays)
+	if date.After(maxDate) {
+		return database.ErrDateTooFar
+	}
+
+	return nil
+}
+
 func (s *BookingService) CreateBooking(ctx context.Context, booking *models.Booking) error {
+	// Валидация даты
+	if err := s.ValidateBookingDate(booking.Date); err != nil {
+		return err
+	}
+
 	// Проверяем доступность
 	available, err := s.repo.CheckAvailability(ctx, booking.ItemID, booking.Date)
 	if err != nil {
@@ -182,6 +207,22 @@ func (s *BookingService) CheckAvailability(ctx context.Context, itemID int64, da
 	return s.repo.CheckAvailability(ctx, itemID, date)
 }
 
+func (s *BookingService) GetBookedCount(ctx context.Context, itemID int64, date time.Time) (int, error) {
+	return s.repo.GetBookedCount(ctx, itemID, date)
+}
+
+func (s *BookingService) GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]models.Booking, error) {
+	return s.repo.GetBookingsByDateRange(ctx, start, end)
+}
+
+func (s *BookingService) GetBooking(ctx context.Context, id int64) (*models.Booking, error) {
+	return s.repo.GetBooking(ctx, id)
+}
+
+func (s *BookingService) GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]models.Booking, error) {
+	return s.repo.GetDailyBookings(ctx, start, end)
+}
+
 func (s *BookingService) publishEvent(ctx context.Context, eventType string, booking models.Booking, changedBy string, changedByID int64) {
 	if s.eventBus == nil {
 		return
@@ -209,7 +250,7 @@ func (s *BookingService) enqueueSync(ctx context.Context, booking models.Booking
 	if s.sheetsWorker == nil {
 		return
 	}
-	
+
 	var status string
 	if taskType == "update_status" {
 		status = booking.Status

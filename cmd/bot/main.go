@@ -21,6 +21,7 @@ import (
 	"bronivik/internal/repository"
 	"bronivik/internal/service"
 	"bronivik/internal/worker"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -151,7 +152,9 @@ func main() {
 	subscribeBookingEvents(ctx, eventBus, db, sheetsWorker, &logger)
 
 	// Инициализация бизнес-сервисов
-	bookingService := service.NewBookingService(db, eventBus, sheetsWorker, &logger)
+	bookingService := service.NewBookingService(db, eventBus, sheetsWorker, cfg.Bot.MaxBookingDays, &logger)
+	userService := service.NewUserService(db, cfg, &logger)
+	itemService := service.NewItemService(db, itemsConfig.Items, &logger)
 
 	// Инициализация API сервера
 	if cfg.API.Enabled {
@@ -178,13 +181,13 @@ func main() {
 	botWrapper := bot.NewBotWrapper(botAPI)
 	tgService := service.NewTelegramService(botWrapper)
 
-	telegramBot, err := bot.NewBot(tgService, cfg, itemsConfig.Items, db, stateService, sheetsService, sheetsWorker, eventBus, bookingService, &logger)
+	telegramBot, err := bot.NewBot(tgService, cfg, stateService, sheetsService, sheetsWorker, eventBus, bookingService, userService, itemService, &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Ошибка создания бота")
 	}
 
 	logger.Info().Msg("Бот запущен...")
-	
+
 	// Запускаем напоминания
 	telegramBot.StartReminders(ctx)
 

@@ -1,8 +1,8 @@
 package events
 
 import (
-"encoding/json"
-"testing"
+	"encoding/json"
+	"testing"
 )
 
 func TestEventBus(t *testing.T) {

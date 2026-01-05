@@ -24,7 +24,7 @@ func (b *Bot) SyncScheduleToSheets(ctx context.Context) {
 		Msg("Syncing schedule to Google Sheets")
 
 	// Получаем данные о бронированиях
-	dailyBookings, err := b.db.GetDailyBookings(ctx, startDate, endDate)
+	dailyBookings, err := b.bookingService.GetDailyBookings(ctx, startDate, endDate)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Failed to get daily bookings for schedule sync")
 		return
@@ -65,7 +65,12 @@ func (b *Bot) SyncScheduleToSheets(ctx context.Context) {
 
 	// Конвертируем items
 	var googleItems []models.Item
-	for _, item := range b.items {
+	items, err := b.itemService.GetActiveItems(ctx)
+	if err != nil {
+		b.logger.Error().Err(err).Msg("Failed to get active items for schedule sync")
+		return
+	}
+	for _, item := range items {
 		googleItems = append(googleItems, models.Item{
 			ID:            item.ID,
 			Name:          item.Name,

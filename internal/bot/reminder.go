@@ -11,7 +11,7 @@ import (
 
 // StartReminders schedules daily reminders for next-day bookings.
 func (b *Bot) StartReminders(ctx context.Context) {
-	if b == nil || b.db == nil || b.tgService == nil {
+	if b == nil || b.tgService == nil {
 		return
 	}
 
@@ -37,7 +37,7 @@ func (b *Bot) sendTomorrowReminders(ctx context.Context) {
 	start := time.Now().Add(24 * time.Hour).Truncate(24 * time.Hour)
 	end := start
 
-	bookings, err := b.db.GetBookingsByDateRange(ctx, start, end)
+	bookings, err := b.bookingService.GetBookingsByDateRange(ctx, start, end)
 	if err != nil {
 		b.logger.Error().Err(err).Time("start", start).Time("end", end).Msg("reminder: get bookings error")
 		return
@@ -48,7 +48,7 @@ func (b *Bot) sendTomorrowReminders(ctx context.Context) {
 			continue
 		}
 
-		user, err := b.db.GetUserByID(ctx, booking.UserID)
+		user, err := b.userService.GetUserByID(ctx, booking.UserID)
 		if err != nil {
 			b.logger.Error().Err(err).Int64("user_id", booking.UserID).Msg("reminder: load user error")
 			continue

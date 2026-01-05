@@ -10,6 +10,7 @@ import (
 
 	"bronivik/internal/database"
 	"bronivik/internal/models"
+
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
@@ -84,7 +85,7 @@ func NewSheetsWorker(db *database.DB, sheets SheetsClient, redisClient *redis.Cl
 		sheets:        sheets,
 		redis:         redisClient,
 		retryPolicy:   retry,
-		queue:         make(chan models.SyncTask, 128),
+		queue:         make(chan models.SyncTask, models.WorkerQueueSize),
 		redisQueueKey: "sheets:queue",
 		deadLetterKey: "sheets:deadletter",
 		pollInterval:  2 * time.Second,

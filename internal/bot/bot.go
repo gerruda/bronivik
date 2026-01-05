@@ -8,7 +8,7 @@ import (
 	"bronivik/internal/config"
 	"bronivik/internal/domain"
 	"bronivik/internal/events"
-	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -17,26 +17,26 @@ import (
 type Bot struct {
 	tgService      domain.TelegramService
 	config         *config.Config
-	items          []models.Item
-	db             domain.Repository
 	stateService   domain.StateManager
 	sheetsService  domain.SheetsWriter
 	sheetsWorker   domain.SyncWorker
 	eventBus       domain.EventPublisher
 	bookingService domain.BookingService
+	userService    domain.UserService
+	itemService    domain.ItemService
 	logger         *zerolog.Logger
 }
 
 func NewBot(
 	tgService domain.TelegramService,
 	config *config.Config,
-	items []models.Item,
-	db domain.Repository,
 	stateService domain.StateManager,
 	googleService domain.SheetsWriter,
 	sheetsWorker domain.SyncWorker,
 	eventBus domain.EventPublisher,
 	bookingService domain.BookingService,
+	userService domain.UserService,
+	itemService domain.ItemService,
 	logger *zerolog.Logger,
 ) (*Bot, error) {
 	if eventBus == nil {
@@ -51,13 +51,13 @@ func NewBot(
 	return &Bot{
 		tgService:      tgService,
 		config:         config,
-		items:          items,
-		db:             db,
 		stateService:   stateService,
 		sheetsService:  googleService,
 		sheetsWorker:   sheetsWorker,
 		eventBus:       eventBus,
 		bookingService: bookingService,
+		userService:    userService,
+		itemService:    itemService,
 		logger:         logger,
 	}, nil
 }

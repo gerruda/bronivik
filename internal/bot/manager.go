@@ -135,7 +135,7 @@ func (b *Bot) handleManagerCallback(ctx context.Context, update tgbotapi.Update)
 	// Проверяем просмотр конкретной заявки из списка
 	if strings.HasPrefix(data, "show_booking:") {
 		id, _ := strconv.ParseInt(strings.TrimPrefix(data, "show_booking:"), 10, 64)
-		booking, err := b.db.GetBooking(ctx, id)
+		booking, err := b.bookingService.GetBooking(ctx, id)
 		if err == nil {
 			b.sendManagerBookingDetail(ctx, callback.Message.Chat.ID, booking)
 		}
@@ -197,7 +197,7 @@ func (b *Bot) handleManagerCallback(ctx context.Context, update tgbotapi.Update)
 		return false
 	}
 
-	booking, err := b.db.GetBooking(ctx, bookingID)
+	booking, err := b.bookingService.GetBooking(ctx, bookingID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("booking_id", bookingID).Msg("Error getting booking")
 		return true
