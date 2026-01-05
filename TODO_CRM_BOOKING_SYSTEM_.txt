@@ -821,7 +821,7 @@ bronivik_crm/
 ## 2.6 Docker конфигурация
 
 ### 2.6.1 Dockerfile
-- [ ] **Создать `Dockerfile`**
+- [x] **Создать `Dockerfile`**
   ```dockerfile
   FROM golang: 1.21-alpine AS builder
   
@@ -841,7 +841,7 @@ bronivik_crm/
   ```
 
 ### 2.6.2 Docker Compose для всей системы
-- [ ] **Создать `docker/docker-compose.yml`**
+- [x] **Создать `docker/docker-compose.yml`**
   ```yaml
   version:  '3.8'
   
