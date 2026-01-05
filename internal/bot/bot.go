@@ -8,7 +8,6 @@ import (
 	"bronivik/internal/config"
 	"bronivik/internal/domain"
 	"bronivik/internal/events"
-	"bronivik/internal/models"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
@@ -25,6 +24,7 @@ type Bot struct {
 	bookingService domain.BookingService
 	userService    domain.UserService
 	itemService    domain.ItemService
+	metrics        *Metrics
 	logger         *zerolog.Logger
 }
 
@@ -38,6 +38,7 @@ func NewBot(
 	bookingService domain.BookingService,
 	userService domain.UserService,
 	itemService domain.ItemService,
+	metrics *Metrics,
 	logger *zerolog.Logger,
 ) (*Bot, error) {
 	if eventBus == nil {
@@ -59,6 +60,7 @@ func NewBot(
 		bookingService: bookingService,
 		userService:    userService,
 		itemService:    itemService,
+		metrics:        metrics,
 		logger:         logger,
 	}, nil
 }
@@ -99,6 +101,13 @@ func (b *Bot) Start(ctx context.Context) {
 }
 
 func (b *Bot) processUpdate(ctx context.Context, update tgbotapi.Update) {
+	start := time.Now()
+	defer func() {
+		if b.metrics != nil {
+			b.metrics.UpdateProcessingTime.Observe(time.Since(start).Seconds())
+		}
+	}()
+
 	// Создаем контекст для обработки каждого обновления
 	updateCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -123,7 +132,7 @@ func (b *Bot) processUpdate(ctx context.Context, update tgbotapi.Update) {
 		b.trackActivity(userID)
 
 		if !b.isManager(userID) {
-			allowed, err := b.stateService.CheckRateLimit(updateCtx, userID, models.RateLimitMessages, time.Duration(models.RateLimitWindow)*time.Second)
+			allowed, err := b.stateService.CheckRateLimit(updateCtx, userID, b.config.Bot.RateLimitMessages, time.Duration(b.config.Bot.RateLimitWindow)*time.Second)
 			if err != nil {
 				b.logger.Error().Err(err).Int64("user_id", userID).Msg("Rate limit check failed")
 			} else if !allowed {

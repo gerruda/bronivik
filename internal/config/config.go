@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"bronivik/internal/models"
+
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
@@ -33,6 +34,8 @@ type BotConfig struct {
 	PaginationSize    int    `yaml:"pagination_size"`
 	MaxBookingDays    int    `yaml:"max_booking_days"`
 	MinBookingAdvance int    `yaml:"min_booking_advance"`
+	RateLimitMessages int    `yaml:"rate_limit_messages"`
+	RateLimitWindow   int    `yaml:"rate_limit_window"`
 }
 
 type APIConfig struct {
@@ -236,5 +239,11 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Bot.MaxBookingDays == 0 {
 		c.Bot.MaxBookingDays = 365
+	}
+	if c.Bot.RateLimitMessages == 0 {
+		c.Bot.RateLimitMessages = 20
+	}
+	if c.Bot.RateLimitWindow == 0 {
+		c.Bot.RateLimitWindow = 60
 	}
 }

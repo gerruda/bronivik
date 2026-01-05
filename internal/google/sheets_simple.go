@@ -22,6 +22,7 @@ type SheetsService struct {
 	bookingsSheetID string
 	rowCache        map[int64]int
 	cacheMu         sync.RWMutex
+	lastRefresh     time.Time
 }
 
 func NewSimpleSheetsService(credentialsFile, usersSheetID, bookingsSheetID string) (*SheetsService, error) {
@@ -62,9 +63,9 @@ func NewSimpleSheetsService(credentialsFile, usersSheetID, bookingsSheetID strin
 		service.WarmUpCache(ctx)
 	}()
 
-	// Periodic cache refresh every 1 hour
+	// Periodic cache refresh
 	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
+		ticker := time.NewTicker(time.Duration(models.SheetsCacheTTL) * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -156,6 +157,7 @@ func (s *SheetsService) WarmUpCache(ctx context.Context) error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
 	s.rowCache = make(map[int64]int)
+	s.lastRefresh = time.Now()
 
 	for i, row := range resp.Values {
 		if len(row) == 0 {
@@ -195,11 +197,20 @@ func (s *SheetsService) AppendBooking(ctx context.Context, booking *models.Booki
 		Values: [][]interface{}{row},
 	}
 
-	_, err := s.service.Spreadsheets.Values.Append(s.bookingsSheetID, rangeData, valueRange).
+	resp, err := s.service.Spreadsheets.Values.Append(s.bookingsSheetID, rangeData, valueRange).
 		ValueInputOption("RAW").
 		InsertDataOption("INSERT_ROWS").
 		Context(ctx).
 		Do()
+
+	if err == nil && resp != nil && resp.Updates != nil {
+		// Parse row number from range like "Bookings!A10:J10"
+		var rowIdx int
+		_, err := fmt.Sscanf(resp.Updates.UpdatedRange, "Bookings!A%d", &rowIdx)
+		if err == nil && rowIdx > 0 {
+			s.setCachedRow(booking.ID, rowIdx)
+		}
+	}
 
 	return err
 }

@@ -75,7 +75,9 @@ func (s *BookingService) CreateBooking(ctx context.Context, booking *models.Book
 
 	// Ставим задачу на синхронизацию
 	s.enqueueSync(ctx, *booking, "upsert")
-	s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{})
+	if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
+		s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
+	}
 
 	return nil
 }
@@ -90,7 +92,9 @@ func (s *BookingService) ConfirmBooking(ctx context.Context, bookingID int64, ve
 	if err == nil {
 		s.publishEvent(ctx, events.EventBookingConfirmed, *booking, "manager", managerID)
 		s.enqueueSync(ctx, *booking, "update_status")
-		s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{})
+		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
+			s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
+		}
 	}
 
 	return nil
@@ -106,7 +110,9 @@ func (s *BookingService) RejectBooking(ctx context.Context, bookingID int64, ver
 	if err == nil {
 		s.publishEvent(ctx, events.EventBookingCancelled, *booking, "manager", managerID)
 		s.enqueueSync(ctx, *booking, "update_status")
-		s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{})
+		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
+			s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
+		}
 	}
 
 	return nil
@@ -122,7 +128,9 @@ func (s *BookingService) CompleteBooking(ctx context.Context, bookingID int64, v
 	if err == nil {
 		s.publishEvent(ctx, events.EventBookingCompleted, *booking, "manager", managerID)
 		s.enqueueSync(ctx, *booking, "update_status")
-		s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{})
+		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
+			s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
+		}
 	}
 
 	return nil
@@ -137,7 +145,9 @@ func (s *BookingService) ReopenBooking(ctx context.Context, bookingID int64, ver
 	booking, err := s.repo.GetBooking(ctx, bookingID)
 	if err == nil {
 		s.enqueueSync(ctx, *booking, "update_status")
-		s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{})
+		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
+			s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
+		}
 	}
 
 	return nil
@@ -178,7 +188,9 @@ func (s *BookingService) ChangeBookingItem(ctx context.Context, bookingID int64,
 	if err == nil {
 		s.publishEvent(ctx, events.EventBookingItemChange, *updatedBooking, "manager", managerID)
 		s.enqueueSync(ctx, *updatedBooking, "upsert")
-		s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{})
+		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
+			s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
+		}
 	}
 
 	return nil
@@ -193,7 +205,9 @@ func (s *BookingService) RescheduleBooking(ctx context.Context, bookingID int64,
 	booking, err := s.repo.GetBooking(ctx, bookingID)
 	if err == nil {
 		s.enqueueSync(ctx, *booking, "update_status")
-		s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{})
+		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
+			s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
+		}
 	}
 
 	return nil

@@ -66,6 +66,14 @@ func (m *MockRepository) GetActiveItems(ctx context.Context) ([]models.Item, err
 	return args.Get(0).([]models.Item), args.Error(1)
 }
 
+func (m *MockRepository) GetItemByID(ctx context.Context, id int64) (*models.Item, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Item), args.Error(1)
+}
+
 func (m *MockRepository) GetItemByName(ctx context.Context, name string) (*models.Item, error) {
 	args := m.Called(ctx, name)
 	if args.Get(0) == nil {

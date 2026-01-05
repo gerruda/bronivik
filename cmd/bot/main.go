@@ -157,6 +157,7 @@ func main() {
 	bookingService := service.NewBookingService(db, eventBus, sheetsWorker, cfg.Bot.MaxBookingDays, &logger)
 	userService := service.NewUserService(db, cfg, &logger)
 	itemService := service.NewItemService(db, &logger)
+	metrics := bot.NewMetrics()
 
 	// Инициализация API сервера
 	if cfg.API.Enabled {
@@ -183,7 +184,7 @@ func main() {
 	botWrapper := bot.NewBotWrapper(botAPI)
 	tgService := service.NewTelegramService(botWrapper)
 
-	telegramBot, err := bot.NewBot(tgService, cfg, stateService, sheetsService, sheetsWorker, eventBus, bookingService, userService, itemService, &logger)
+	telegramBot, err := bot.NewBot(tgService, cfg, stateService, sheetsService, sheetsWorker, eventBus, bookingService, userService, itemService, metrics, &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Ошибка создания бота")
 	}

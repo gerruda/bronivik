@@ -36,4 +36,7 @@ const (
 
 	// ItemsCacheTTL время жизни кэша предметов в памяти
 	ItemsCacheTTL = 30 * 60 // 30 минут в секундах
+
+	// SheetsCacheTTL время жизни кэша строк Google Sheets
+	SheetsCacheTTL = 60 * 60 // 1 час в секундах
 )

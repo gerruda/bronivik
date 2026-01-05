@@ -19,21 +19,25 @@ func TestItemService_GetActiveItems(t *testing.T) {
 		{ID: 2, Name: "Item 2"},
 	}
 
-	s := NewItemService(mockRepo, items, &logger)
+	mockRepo.On("GetActiveItems", mock.Anything).Return(items, nil)
+
+	s := NewItemService(mockRepo, &logger)
 
 	res, err := s.GetActiveItems(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, items, res)
+	mockRepo.AssertExpectations(t)
 }
 
 func TestItemService_GetItemByID(t *testing.T) {
 	mockRepo := new(MockRepository)
 	logger := zerolog.Nop()
-	items := []models.Item{
-		{ID: 1, Name: "Item 1"},
-	}
+	item1 := &models.Item{ID: 1, Name: "Item 1"}
 
-	s := NewItemService(mockRepo, items, &logger)
+	mockRepo.On("GetItemByID", mock.Anything, int64(1)).Return(item1, nil)
+	mockRepo.On("GetItemByID", mock.Anything, int64(2)).Return(nil, assert.AnError)
+
+	s := NewItemService(mockRepo, &logger)
 
 	item, err := s.GetItemByID(context.Background(), 1)
 	assert.NoError(t, err)
@@ -42,28 +46,15 @@ func TestItemService_GetItemByID(t *testing.T) {
 	item, err = s.GetItemByID(context.Background(), 2)
 	assert.Error(t, err)
 	assert.Nil(t, item)
+	mockRepo.AssertExpectations(t)
 }
 
 func TestItemService_Refresh(t *testing.T) {
 	mockRepo := new(MockRepository)
 	logger := zerolog.Nop()
-	initialItems := []models.Item{
-		{ID: 1, Name: "Item 1"},
-	}
 
-	s := NewItemService(mockRepo, initialItems, &logger)
-
-	newItems := []models.Item{
-		{ID: 1, Name: "Item 1 Updated"},
-		{ID: 2, Name: "Item 2"},
-	}
-
-	mockRepo.On("GetActiveItems", mock.Anything).Return(newItems, nil)
+	s := NewItemService(mockRepo, &logger)
 
 	err := s.Refresh(context.Background())
 	assert.NoError(t, err)
-
-	res, _ := s.GetActiveItems(context.Background())
-	assert.Equal(t, newItems, res)
-	mockRepo.AssertExpectations(t)
 }

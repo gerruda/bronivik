@@ -330,6 +330,7 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 		UpdatedAt:    time.Now(),
 	}
 
+	start := time.Now()
 	err := b.bookingService.CreateBooking(ctx, &booking)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("user_id", update.Message.From.ID).Msg("Error creating booking")
@@ -338,6 +339,12 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 			b.handleMainMenu(ctx, update)
 		}
 		return
+	}
+
+	// Track metrics
+	if b.metrics != nil {
+		b.metrics.BookingsCreated.WithLabelValues(selectedItem.Name).Inc()
+		b.metrics.BookingDuration.WithLabelValues(selectedItem.Name).Observe(time.Since(start).Seconds())
 	}
 
 	// Уведомляем менеджеров

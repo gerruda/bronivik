@@ -29,6 +29,7 @@ func (db *DB) LoadItems(ctx context.Context) error {
 		}
 		db.itemsCache[item.ID] = item
 	}
+	db.cacheTime = time.Now()
 	return nil
 }
 
@@ -59,6 +60,17 @@ func (db *DB) SetItems(items []models.Item) {
 	db.itemsCache = make(map[int64]models.Item)
 	for _, item := range items {
 		db.itemsCache[item.ID] = item
+	}
+	db.cacheTime = time.Now()
+}
+
+func (db *DB) checkCacheTTL(ctx context.Context) {
+	db.mu.RLock()
+	expired := time.Since(db.cacheTime) > time.Duration(models.ItemsCacheTTL)*time.Second
+	db.mu.RUnlock()
+
+	if expired {
+		_ = db.LoadItems(ctx)
 	}
 }
 
@@ -107,6 +119,7 @@ func (db *DB) CreateItem(ctx context.Context, item *models.Item) error {
 }
 
 func (db *DB) GetItemByID(ctx context.Context, id int64) (*models.Item, error) {
+	db.checkCacheTTL(ctx)
 	db.mu.RLock()
 	item, ok := db.itemsCache[id]
 	db.mu.RUnlock()
@@ -132,6 +145,7 @@ func (db *DB) GetItemByID(ctx context.Context, id int64) (*models.Item, error) {
 }
 
 func (db *DB) GetItemByName(ctx context.Context, name string) (*models.Item, error) {
+	db.checkCacheTTL(ctx)
 	// Try cache first
 	if item, ok := db.itemByNameFromCache(name); ok {
 		return item, nil
@@ -175,6 +189,7 @@ func (db *DB) GetItemAvailabilityByName(ctx context.Context, itemName string, da
 }
 
 func (db *DB) GetActiveItems(ctx context.Context) ([]models.Item, error) {
+	db.checkCacheTTL(ctx)
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 

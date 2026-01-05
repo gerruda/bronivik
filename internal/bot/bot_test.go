@@ -243,7 +243,7 @@ func TestBotStart(t *testing.T) {
 		},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, &logger)
+	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -295,7 +295,7 @@ func TestHandleSelectItem(t *testing.T) {
 		Telegram: config.TelegramConfig{BotToken: "test"},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, &logger)
+	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
 
 	update := tgbotapi.Update{
 		Message: &tgbotapi.Message{
@@ -335,7 +335,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 		Telegram: config.TelegramConfig{BotToken: "test"},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, &logger)
+	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
 
 	update := tgbotapi.Update{
 		CallbackQuery: &tgbotapi.CallbackQuery{
@@ -377,7 +377,7 @@ func TestHandleDateInput(t *testing.T) {
 		Bot:      config.BotConfig{MaxBookingDays: 365},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, &logger)
+	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
 
 	state.states[123] = &models.UserState{
 		UserID:      123,
@@ -416,7 +416,7 @@ func TestHandleStartWithUserTracking(t *testing.T) {
 		Telegram: config.TelegramConfig{BotToken: "test"},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, &logger)
+	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
 
 	update := tgbotapi.Update{
 		Message: &tgbotapi.Message{
@@ -467,7 +467,7 @@ func TestHandlePhoneReceived(t *testing.T) {
 		Telegram: config.TelegramConfig{BotToken: "test"},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, &logger)
+	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
 
 	state.states[123] = &models.UserState{
 		UserID:      123,
@@ -514,7 +514,7 @@ func TestBookingFlow(t *testing.T) {
 		Bot:      config.BotConfig{MaxBookingDays: 365},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, &logger)
+	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
 
 	ctx := context.Background()
 	userID := int64(123)
@@ -527,9 +527,9 @@ func TestBookingFlow(t *testing.T) {
 
 	// 2. Select item
 	b.handleCallbackQuery(ctx, tgbotapi.Update{CallbackQuery: &tgbotapi.CallbackQuery{
-		From: &tgbotapi.User{ID: userID},
+		From:    &tgbotapi.User{ID: userID},
 		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: userID}},
-		Data: "select_item:1",
+		Data:    "select_item:1",
 	}})
 	if state.states[userID].CurrentStep != StateWaitingDate {
 		t.Fatalf("expected state %s, got %s", StateWaitingDate, state.states[userID].CurrentStep)
