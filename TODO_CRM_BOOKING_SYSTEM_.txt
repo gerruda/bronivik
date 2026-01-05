@@ -159,12 +159,6 @@
   ```
 
 ### 1.2.4 Интеграция воркера
-- [x] **Модифицировать точки вызова синхронизации**
-  - [x] `finalizeBooking()` — добавить задачу в очередь вместо прямого вызова
-  - [x] `confirmBooking()` — добавить задачу в очередь
-  - [x] `cancelBooking()` — добавить задачу в очередь
-  - [x] `completeBooking()` — добавить задачу в очередь
-
  - [x] **Пример модификации в `internal/bot/utils.go`**
   ```go
   // Было: 
@@ -179,6 +173,8 @@
       BookingID: booking.ID,
       Booking:    &booking,
   })
+ [x] **Проверка доступности слота**
+ [x] **Создание бронирования с проверками**
   ```
   - [x] Внедрено: enqueue в finalizeBooking/confirm/reject/reopen/complete вместо прямых вызовов
 
@@ -524,7 +520,7 @@ bronivik_crm/
   ```
 
 ### 2.2.2 Методы для работы с кабинетами
-- [ ] **CRUD кабинетов**
+- [x] **CRUD кабинетов**
   ```go
   func (db *DB) CreateCabinet(ctx context. Context, cabinet *models.Cabinet) error
   func (db *DB) GetCabinet(ctx context. Context, id int64) (*models.Cabinet, error)
@@ -534,7 +530,7 @@ bronivik_crm/
   ```
 
 ### 2.2.3 Методы для работы с расписанием
-- [ ] **CRUD расписания**
+- [x] **CRUD расписания**
   ```go
   func (db *DB) SetCabinetSchedule(ctx context. Context, schedule *models.CabinetSchedule) error
   func (db *DB) GetCabinetSchedule(ctx context. Context, cabinetID int64) ([]models.CabinetSchedule, error)
