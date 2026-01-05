@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -37,6 +39,10 @@ type Config struct {
 		APIKey          string `yaml:"api_key"`
 		CacheTTLSeconds int    `yaml:"cache_ttl_seconds"`
 	} `yaml:"api"`
+
+	Monitoring struct {
+		HealthCheckPort int `yaml:"health_check_port"`
+	} `yaml:"monitoring"`
 
 	Booking struct {
 		MinAdvanceMinutes int `yaml:"min_advance_minutes"`
@@ -78,8 +84,9 @@ func main() {
 	defer db.Close()
 
 	client := crmapi.NewBronivikClient(cfg.API.BaseURL, cfg.API.APIKey)
+	var rdb *redis.Client
 	if cfg.Redis.Address != "" && cfg.API.CacheTTLSeconds > 0 {
-		rdb := redis.NewClient(&redis.Options{Addr: cfg.Redis.Address, Password: cfg.Redis.Password, DB: cfg.Redis.DB})
+		rdb = redis.NewClient(&redis.Options{Addr: cfg.Redis.Address, Password: cfg.Redis.Password, DB: cfg.Redis.DB})
 		client.UseRedisCache(rdb, time.Duration(cfg.API.CacheTTLSeconds)*time.Second)
 	}
 
@@ -91,6 +98,11 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.Monitoring.HealthCheckPort == 0 {
+		cfg.Monitoring.HealthCheckPort = 8090
+	}
+	go startHealthServer(ctx, cfg.Monitoring.HealthCheckPort, db, rdb)
 
 	log.Println("CRM bot started")
 	b.Start(ctx)
@@ -106,4 +118,39 @@ func botRulesFromConfig(cfg Config) bot.BookingRules {
 		maxAdvance = time.Duration(cfg.Booking.MaxAdvanceDays) * 24 * time.Hour
 	}
 	return bot.BookingRules{MinAdvance: minAdvance, MaxAdvance: maxAdvance, MaxActivePerUser: cfg.Booking.MaxActivePerUser}
+}
+
+func startHealthServer(ctx context.Context, port int, db *database.DB, rdb *redis.Client) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		ctxPing, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		if err := db.PingContext(ctxPing); err != nil {
+			http.Error(w, "db not ready", http.StatusServiceUnavailable)
+			return
+		}
+		if rdb != nil {
+			if err := rdb.Ping(ctxPing).Err(); err != nil {
+				http.Error(w, "redis not ready", http.StatusServiceUnavailable)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
+	})
+
+	srv := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: mux}
+	go func() {
+		<-ctx.Done()
+		ctxShutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctxShutdown)
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("health server error: %v", err)
+	}
 }

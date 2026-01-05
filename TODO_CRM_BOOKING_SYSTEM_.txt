@@ -1016,9 +1016,9 @@ bronivik_crm/
   - JSON формат для продакшена
 
 ## 4.3 Healthchecks
-- [ ] **Health endpoints**
-  - [ ] `GET /healthz` (CRM)
-  - [ ] `GET /readyz` (CRM) — проверка БД/Redis/API
+- [x] **Health endpoints**
+  - [x] `GET /healthz` (CRM)
+  - [x] `GET /readyz` (CRM) — проверка БД/Redis/API
 
 ---
 
