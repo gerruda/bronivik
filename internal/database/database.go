@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -38,10 +39,17 @@ func NewDB(path string, logger *zerolog.Logger) (*DB, error) {
 		return nil, fmt.Errorf("failed to create database directory: %v", err)
 	}
 
-	db, err := sql.Open("sqlite3", path)
+	// Добавляем параметры для SQLite: WAL mode, busy timeout
+	dsn := path + "?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000"
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %v", err)
 	}
+
+	// Настройка пула соединений
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
 
 	// Проверяем соединение
 	if err := db.Ping(); err != nil {
@@ -57,6 +65,12 @@ func NewDB(path string, logger *zerolog.Logger) (*DB, error) {
 	// Создаем таблицы
 	if err := instance.createTables(); err != nil {
 		return nil, fmt.Errorf("failed to create tables: %v", err)
+	}
+
+	// Load items into cache
+	if err := instance.LoadItems(context.Background()); err != nil {
+		logger.Error().Err(err).Msg("Failed to load items into cache")
+		// We don't return error here to allow the app to start even if items are missing
 	}
 
 	logger.Info().Str("path", path).Msg("Database initialized")

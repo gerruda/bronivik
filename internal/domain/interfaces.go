@@ -19,6 +19,7 @@ type Repository interface {
 	CheckAvailability(ctx context.Context, itemID int64, date time.Time) (bool, error)
 	GetAvailabilityForPeriod(ctx context.Context, itemID int64, startDate time.Time, days int) ([]models.Availability, error)
 	GetActiveItems(ctx context.Context) ([]models.Item, error)
+	GetItemByID(ctx context.Context, id int64) (*models.Item, error)
 	GetItemByName(ctx context.Context, name string) (*models.Item, error)
 	CreateItem(ctx context.Context, item *models.Item) error
 	UpdateItem(ctx context.Context, item *models.Item) error

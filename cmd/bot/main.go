@@ -94,8 +94,10 @@ func main() {
 	}
 	defer db.Close()
 
-	// Устанавливаем items в базу данных
-	db.SetItems(itemsConfig.Items)
+	// Синхронизируем items с базой данных
+	if err := db.SyncItems(context.Background(), itemsConfig.Items); err != nil {
+		logger.Error().Err(err).Msg("Ошибка синхронизации позиций")
+	}
 
 	if cfg.Telegram.BotToken == "YOUR_BOT_TOKEN_HERE" {
 		logger.Fatal().Msg("Задайте токен бота в config.yaml")
@@ -154,7 +156,7 @@ func main() {
 	// Инициализация бизнес-сервисов
 	bookingService := service.NewBookingService(db, eventBus, sheetsWorker, cfg.Bot.MaxBookingDays, &logger)
 	userService := service.NewUserService(db, cfg, &logger)
-	itemService := service.NewItemService(db, itemsConfig.Items, &logger)
+	itemService := service.NewItemService(db, &logger)
 
 	// Инициализация API сервера
 	if cfg.API.Enabled {

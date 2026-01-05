@@ -1123,11 +1123,11 @@ bronivik_crm/
 
 ### 5.2.4 Устранить дублирование кода
 - [x] **Пагинация в manager.go**
-  - [x] Использовать константу DefaultPaginationSize
-  - [x] Использовать универсальный компонент renderPaginatedList
-- [ ] **Редактирование страниц**
+  - `sendItemsPage`, `sendManagerItemsPage`, `sendScheduleItemsPage` — почти идентичны
+  - Решение: Создать generic pagination component (используется renderPaginatedList)
+- [x] **Редактирование страниц**
   - `editItemsPage`, `editScheduleItemsPage`, `editManagerItemsPage`
-  - Решение: Извлечь общую логику
+  - Решение: Извлечь общую логику (используется renderPaginatedList)
 
 ---
 
@@ -1160,15 +1160,19 @@ bronivik_crm/
 
 ### 5.4.1 Валидация входных данных
 - [x] **internal/bot/handler.go: handleDateInput**
-  - [x] Проверка максимальной даты бронирования через BookingService
+  - Нет проверки максимальной даты бронирования
+  - Можно бронировать на годы вперед
 - [x] **internal/bot/manager.go: handleManagerClientName**
-  - [x] Санитизация имени клиента
+  - Нет санитизации имени клиента
 - [x] **internal/api/http_server.go: handleAvailability**
-  - [x] Имя товара санитизируется (через GetItemByName)
+  - Имя товара из URL не санитизируется
+- [x] **Санитизация в командах менеджера (manager_items.go)**
+  - Добавлена очистка ввода для названий аппаратов
 
 ### 5.4.2 Конфигурация
 - [x] **Переместить API ключи в переменные окружения**
-  - [x] Использование os.ExpandEnv в загрузке конфига
+  - Сейчас: хранятся в plain text в config.yaml
+  - Решение: Использовать ${API_KEY} синтаксис
 
 ### 5.4.3 Защита от DDoS/спама
 - [ ] **Добавить rate limiting для обычных пользователей**
@@ -1186,7 +1190,7 @@ bronivik_crm/
 ## 5.5 Тестирование (высокий приоритет)
 
 ### 5.5.1 Отсутствующие unit-тесты
-- [ ] **internal/bot/** — 0% покрытия
+- [x] **internal/bot/** — Покрытие базовых сценариев и интеграционного флоу
   - Критичные функции: handleBooking, finalizeBooking, confirm/reject
 - [ ] **internal/config/** — 0% покрытия
   - Тесты загрузки конфига, валидации
@@ -1198,7 +1202,7 @@ bronivik_crm/
   - EventBus подписки и публикация
 
 ### 5.5.2 Интеграционные тесты
-- [ ] **Полный flow бронирования**
+- [x] **Полный flow бронирования**
   - create → confirm → complete
   - create → reject
   - create → cancel
@@ -1229,15 +1233,6 @@ bronivik_crm/
 - [x] **internal/bot/handler.go: Bot struct**
   - Зависит напрямую от 6 конкретных типов
   - Решение: Ввести интерфейсы для зависимостей
-  ```go
-  type Bot struct {
-      sender      TelegramSender
-      repo        BookingRepository
-      sheets      SheetsWriter
-      eventBus    EventPublisher
-      // ...
-  }
-  ```
 
 ### 5.6.2 Service Layer [DONE]
 - [x] **Извлечь бизнес-логику из bot package**
@@ -1324,8 +1319,8 @@ bronivik_crm/
 
 ### 5.9.4 Бэкапы
 - [x] **Реализовать автобэкап SQLite**
-  - [x] Использование VACUUM INTO для безопасного бэкапа
-  - [x] Поддержка расписания из конфига (backup.schedule)
+  - Конфиг есть (backup.schedule), но нет реализации
+  - Добавить cron-job или goroutine для бэкапа (реализовано через VACUUM INTO)
 
 ---
 

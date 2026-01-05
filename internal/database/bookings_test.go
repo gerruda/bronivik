@@ -115,3 +115,32 @@ func TestCheckAvailability(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, available)
 }
+
+func TestOptimisticLocking(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// Create booking
+	booking := &models.Booking{
+		ItemID: 1, ItemName: "Test", Date: time.Now(), UserID: 1, UserName: "User 1", Phone: "123", Status: models.StatusPending,
+	}
+	err := db.CreateBooking(ctx, booking)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), booking.Version)
+
+	// Successful update
+	err = db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusConfirmed)
+	require.NoError(t, err)
+
+	// Failed update with old version
+	err = db.UpdateBookingStatusWithVersion(ctx, booking.ID, booking.Version, models.StatusCancelled)
+	assert.ErrorIs(t, err, ErrConcurrentModification)
+
+	// Successful update with new version
+	updated, _ := db.GetBooking(ctx, booking.ID)
+	assert.Equal(t, int64(2), updated.Version)
+	err = db.UpdateBookingStatusWithVersion(ctx, updated.ID, updated.Version, models.StatusCancelled)
+	require.NoError(t, err)
+}

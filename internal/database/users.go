@@ -74,7 +74,8 @@ func (db *DB) UpdateUserPhone(ctx context.Context, telegramID int64, phone strin
 
 func (db *DB) UpdateUserActivity(ctx context.Context, telegramID int64) error {
 	query := `UPDATE users SET last_activity = ?, updated_at = ? WHERE telegram_id = ?`
-	_, err := db.ExecContext(ctx, query, time.Now(), telegramID)
+	now := time.Now()
+	_, err := db.ExecContext(ctx, query, now, now, telegramID)
 	return err
 }
 

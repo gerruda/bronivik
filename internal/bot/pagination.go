@@ -99,7 +99,7 @@ func (b *Bot) renderPaginatedItems(params PaginationParams) {
 		return
 	}
 
-	b.renderPaginatedList(params, len(items), 8, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
+	b.renderPaginatedList(params, len(items), models.DefaultPaginationSize, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
 		var content strings.Builder
 		var keyboard [][]tgbotapi.InlineKeyboardButton
 
@@ -127,7 +127,7 @@ func (b *Bot) renderPaginatedItems(params PaginationParams) {
 
 // renderPaginatedBookings - обертка для списка заявок
 func (b *Bot) renderPaginatedBookings(params PaginationParams, bookings []models.Booking) {
-	b.renderPaginatedList(params, len(bookings), 5, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
+	b.renderPaginatedList(params, len(bookings), models.DefaultBookingsPaginationSize, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
 		var content strings.Builder
 		var keyboard [][]tgbotapi.InlineKeyboardButton
 

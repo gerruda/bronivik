@@ -155,19 +155,7 @@ func (b *Bot) handleManagerSingleDate(ctx context.Context, update tgbotapi.Updat
 
 	// Валидация даты через сервис
 	if err := b.bookingService.ValidateBookingDate(date); err != nil {
-		if errors.Is(err, database.ErrPastDate) {
-			b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
-			return
-		}
-		if errors.Is(err, database.ErrDateTooFar) {
-			maxDays := b.config.Bot.MaxBookingDays
-			if maxDays == 0 {
-				maxDays = 365
-			}
-			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
-			return
-		}
-		b.sendMessage(update.Message.Chat.ID, "Ошибка валидации даты.")
+		b.sendMessage(update.Message.Chat.ID, b.getErrorMessage(err))
 		return
 	}
 
@@ -187,19 +175,7 @@ func (b *Bot) handleManagerStartDate(ctx context.Context, update tgbotapi.Update
 
 	// Валидация даты через сервис
 	if err := b.bookingService.ValidateBookingDate(startDate); err != nil {
-		if errors.Is(err, database.ErrPastDate) {
-			b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
-			return
-		}
-		if errors.Is(err, database.ErrDateTooFar) {
-			maxDays := b.config.Bot.MaxBookingDays
-			if maxDays == 0 {
-				maxDays = 365
-			}
-			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
-			return
-		}
-		b.sendMessage(update.Message.Chat.ID, "Ошибка валидации даты.")
+		b.sendMessage(update.Message.Chat.ID, b.getErrorMessage(err))
 		return
 	}
 
@@ -227,15 +203,8 @@ func (b *Bot) handleManagerEndDate(ctx context.Context, update tgbotapi.Update, 
 
 	// Валидация даты через сервис
 	if err := b.bookingService.ValidateBookingDate(endDate); err != nil {
-		if errors.Is(err, database.ErrDateTooFar) {
-			maxDays := b.config.Bot.MaxBookingDays
-			if maxDays == 0 {
-				maxDays = 365
-			}
-			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
-			return
-		}
-		// Past date check is not strictly needed here if startDate was valid, but good for consistency
+		b.sendMessage(update.Message.Chat.ID, b.getErrorMessage(err))
+		return
 	}
 
 	// Ограничиваем интервал (например, максимум 31 день за раз)
@@ -351,7 +320,7 @@ func (b *Bot) createManagerBookings(ctx context.Context, update tgbotapi.Update,
 		err = b.bookingService.CreateBooking(ctx, booking)
 		if err != nil {
 			b.logger.Error().Err(err).Interface("booking", booking).Msg("Error creating manager booking")
-			failedDates = append(failedDates, date.Format("02.01.2006"))
+			failedDates = append(failedDates, fmt.Sprintf("%s (%s)", date.Format("02.01.2006"), b.getErrorMessage(err)))
 		} else {
 			createdBookings = append(createdBookings, booking)
 		}

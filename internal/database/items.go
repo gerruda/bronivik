@@ -2,11 +2,56 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"sort"
 	"time"
 
 	"bronivik/internal/models"
 )
+
+func (db *DB) LoadItems(ctx context.Context) error {
+	query := `SELECT id, name, description, total_quantity, sort_order, is_active, created_at, updated_at FROM items`
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to load items: %w", err)
+	}
+	defer rows.Close()
+
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.itemsCache = make(map[int64]models.Item)
+
+	for rows.Next() {
+		var item models.Item
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.TotalQuantity, &item.SortOrder, &item.IsActive, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return fmt.Errorf("failed to scan item: %w", err)
+		}
+		db.itemsCache[item.ID] = item
+	}
+	return nil
+}
+
+func (db *DB) SyncItems(ctx context.Context, configItems []models.Item) error {
+	for _, cfgItem := range configItems {
+		// Check if item exists by name
+		var existingID int64
+		err := db.QueryRowContext(ctx, "SELECT id FROM items WHERE name = ?", cfgItem.Name).Scan(&existingID)
+		if err == sql.ErrNoRows {
+			// Create new item
+			item := cfgItem
+			if err := db.CreateItem(ctx, &item); err != nil {
+				return fmt.Errorf("failed to sync item %s: %w", cfgItem.Name, err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("failed to check item %s: %w", cfgItem.Name, err)
+		}
+		// If exists, we could update it, but for now let's just ensure it exists
+	}
+
+	// Reload everything into cache
+	return db.LoadItems(ctx)
+}
 
 func (db *DB) SetItems(items []models.Item) {
 	db.mu.Lock()
@@ -61,6 +106,31 @@ func (db *DB) CreateItem(ctx context.Context, item *models.Item) error {
 	return nil
 }
 
+func (db *DB) GetItemByID(ctx context.Context, id int64) (*models.Item, error) {
+	db.mu.RLock()
+	item, ok := db.itemsCache[id]
+	db.mu.RUnlock()
+	if ok {
+		return &item, nil
+	}
+
+	var dbItem models.Item
+	query := `SELECT id, name, description, total_quantity, sort_order, is_active, created_at, updated_at FROM items WHERE id = ?`
+	err := db.QueryRowContext(ctx, query, id).Scan(
+		&dbItem.ID, &dbItem.Name, &dbItem.Description, &dbItem.TotalQuantity, &dbItem.SortOrder, &dbItem.IsActive, &dbItem.CreatedAt, &dbItem.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get item by id: %w", err)
+	}
+
+	// Update cache
+	db.mu.Lock()
+	db.itemsCache[dbItem.ID] = dbItem
+	db.mu.Unlock()
+
+	return &dbItem, nil
+}
+
 func (db *DB) GetItemByName(ctx context.Context, name string) (*models.Item, error) {
 	// Try cache first
 	if item, ok := db.itemByNameFromCache(name); ok {
@@ -75,6 +145,12 @@ func (db *DB) GetItemByName(ctx context.Context, name string) (*models.Item, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to get item by name: %w", err)
 	}
+
+	// Update cache
+	db.mu.Lock()
+	db.itemsCache[item.ID] = item
+	db.mu.Unlock()
+
 	return &item, nil
 }
 
@@ -99,22 +175,24 @@ func (db *DB) GetItemAvailabilityByName(ctx context.Context, itemName string, da
 }
 
 func (db *DB) GetActiveItems(ctx context.Context) ([]models.Item, error) {
-	query := `SELECT id, name, description, total_quantity, sort_order, is_active, created_at, updated_at 
-              FROM items WHERE is_active = 1 ORDER BY sort_order, id`
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get active items: %w", err)
-	}
-	defer rows.Close()
+	db.mu.RLock()
+	defer db.mu.RUnlock()
 
 	var items []models.Item
-	for rows.Next() {
-		var item models.Item
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.TotalQuantity, &item.SortOrder, &item.IsActive, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan item: %w", err)
+	for _, item := range db.itemsCache {
+		if item.IsActive {
+			items = append(items, item)
 		}
-		items = append(items, item)
 	}
+
+	// Sort by SortOrder, then ID
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].SortOrder != items[j].SortOrder {
+			return items[i].SortOrder < items[j].SortOrder
+		}
+		return items[i].ID < items[j].ID
+	})
+
 	return items, nil
 }
 

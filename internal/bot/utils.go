@@ -332,13 +332,11 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 
 	err := b.bookingService.CreateBooking(ctx, &booking)
 	if err != nil {
-		if errors.Is(err, database.ErrNotAvailable) {
-			b.sendMessage(update.Message.Chat.ID, "К сожалению, позиция стала недоступна. Попробуйте выбрать другую дату.")
-			b.handleMainMenu(ctx, update)
-			return
-		}
 		b.logger.Error().Err(err).Int64("user_id", update.Message.From.ID).Msg("Error creating booking")
-		b.sendMessage(update.Message.Chat.ID, "Произошла ошибка при создании заявки. Попробуйте позже.")
+		b.sendMessage(update.Message.Chat.ID, b.getErrorMessage(err))
+		if errors.Is(err, database.ErrNotAvailable) || errors.Is(err, database.ErrPastDate) {
+			b.handleMainMenu(ctx, update)
+		}
 		return
 	}
 
@@ -632,19 +630,7 @@ func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateS
 
 	// Валидация даты через сервис
 	if err := b.bookingService.ValidateBookingDate(date); err != nil {
-		if errors.Is(err, database.ErrPastDate) {
-			b.sendMessage(update.Message.Chat.ID, "Нельзя бронировать на прошедшие даты. Выберите будущую дату.")
-			return
-		}
-		if errors.Is(err, database.ErrDateTooFar) {
-			maxDays := b.config.Bot.MaxBookingDays
-			if maxDays == 0 {
-				maxDays = 365
-			}
-			b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Нельзя бронировать более чем на %d дней вперед.", maxDays))
-			return
-		}
-		b.sendMessage(update.Message.Chat.ID, "Ошибка валидации даты.")
+		b.sendMessage(update.Message.Chat.ID, b.getErrorMessage(err))
 		return
 	}
 

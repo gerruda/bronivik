@@ -24,4 +24,16 @@ const (
 
 	// DefaultPaginationSize размер пагинации по умолчанию
 	DefaultPaginationSize = 8
+
+	// DefaultBookingsPaginationSize размер пагинации для списка заявок
+	DefaultBookingsPaginationSize = 5
+
+	// RateLimitMessages количество сообщений в окне
+	RateLimitMessages = 20
+
+	// RateLimitWindow окно ограничения частоты сообщений
+	RateLimitWindow = 60 // 1 минута в секундах
+
+	// ItemsCacheTTL время жизни кэша предметов в памяти
+	ItemsCacheTTL = 30 * 60 // 30 минут в секундах
 )
