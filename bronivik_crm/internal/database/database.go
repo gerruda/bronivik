@@ -184,7 +184,7 @@ func ensureHourlyBookingColumns(db *sql.DB) error {
 		return err
 	}
 	toAdd := []struct {
-		name string
+		name     string
 		typeDecl string
 	}{
 		{name: "item_name", typeDecl: "TEXT"},
@@ -217,12 +217,12 @@ func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
 	cols := make(map[string]bool)
 	for rows.Next() {
 		var (
-			cid int
-			name string
+			cid      int
+			name     string
 			typeDecl string
-			notnull int
-			dflt sql.NullString
-			pk int
+			notnull  int
+			dflt     sql.NullString
+			pk       int
 		)
 		if err := rows.Scan(&cid, &name, &typeDecl, &notnull, &dflt, &pk); err != nil {
 			return nil, err
