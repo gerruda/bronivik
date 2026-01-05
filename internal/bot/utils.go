@@ -325,22 +325,14 @@ func (b *Bot) finalizeBooking(update tgbotapi.Update) {
 	// Уведомляем менеджеров
 	b.notifyManagers(booking)
 
-	if b.sheetsService != nil {
-		err := b.sheetsService.AppendBooking(&booking)
-		if err != nil {
-			log.Printf("Failed to sync booking to Google Sheets: %v", err)
-			// Не прерываем выполнение, просто логируем ошибку
-		} else {
-			log.Printf("Booking synced to Google Sheets: %d", booking.ID)
-		}
-	}
+	b.appendBookingToSheetsAsync(booking)
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 		fmt.Sprintf("⏳ Ваша заявка #%d на позицию %s успешно создана. \nОжидайте подтверждения.", booking.ID, booking.ItemName))
 
 	go func() {
 		time.Sleep(1 * time.Second) // Небольшая задержка для завершения операции в БД
-		b.SyncBookingsToSheets()
+		b.syncBookingsToSheetsAsync()
 		// b.SyncScheduleToSheets()
 	}()
 

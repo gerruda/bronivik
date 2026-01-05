@@ -262,12 +262,12 @@ func (b *Bot) filterActiveBookings(bookings []models.Booking) []models.Booking {
 func getLastColumn(colCount int) string {
 	// Базовые колонки A-Z
 	if colCount <= 26 {
-		return string('A' + colCount - 1)
+		return string(rune('A' + colCount - 1))
 	}
 
 	// Для большего количества колонок (AA, AB, etc.)
-	firstChar := string('A' + (colCount-1)/26 - 1)
-	secondChar := string('A' + (colCount-1)%26)
+	firstChar := string(rune('A' + (colCount-1)/26 - 1))
+	secondChar := string(rune('A' + (colCount-1)%26))
 	return firstChar + secondChar
 }
 

@@ -46,6 +46,17 @@ func NewDB(path string) (*DB, error) {
 
 func createTables(db *sql.DB) error {
 	queries := []string{
+		// Таблица предметов (аппаратов)
+		`CREATE TABLE IF NOT EXISTS items (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT UNIQUE NOT NULL,
+			description TEXT,
+			total_quantity INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN NOT NULL DEFAULT 1,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
 		// Таблица пользователей
 		`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,6 +93,9 @@ func createTables(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_users_is_manager ON users(is_manager)`,
 		`CREATE INDEX IF NOT EXISTS idx_users_is_blacklisted ON users(is_blacklisted)`,
 
+		// Индексы для items
+		`CREATE INDEX IF NOT EXISTS idx_items_sort ON items(sort_order, id)`,
+
 		// Существующие индексы для бронирований
 		`CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)`,
 		`CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status)`,
@@ -103,6 +117,138 @@ func (db *DB) SetItems(items []models.Item) {
 	for _, item := range items {
 		db.items[item.ID] = item
 	}
+}
+
+// CreateItem вставляет новый item. Если SortOrder не задан, помещает в конец.
+func (db *DB) CreateItem(ctx context.Context, item *models.Item) error {
+	if item == nil {
+		return fmt.Errorf("item is nil")
+	}
+	if item.SortOrder == 0 {
+		var maxOrder sql.NullInt64
+		if err := db.QueryRowContext(ctx, "SELECT COALESCE(MAX(sort_order),0) FROM items").Scan(&maxOrder); err != nil {
+			return err
+		}
+		item.SortOrder = maxOrder.Int64 + 1
+	}
+
+	now := time.Now()
+	res, err := db.ExecContext(ctx, `INSERT INTO items (name, description, total_quantity, sort_order, is_active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 1, ?, ?)
+	`, item.Name, item.Description, item.TotalQuantity, item.SortOrder, now, now)
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	item.ID = id
+	item.CreatedAt = now
+	item.UpdatedAt = now
+	item.IsActive = true
+	return nil
+}
+
+// GetItemByName возвращает item по имени.
+func (db *DB) GetItemByName(ctx context.Context, name string) (*models.Item, error) {
+	row := db.QueryRowContext(ctx, `SELECT id, name, description, total_quantity, sort_order, is_active, created_at, updated_at
+		FROM items WHERE name = ? LIMIT 1`, name)
+	return scanItem(row)
+}
+
+// GetActiveItems возвращает активные items, отсортированные по sort_order.
+func (db *DB) GetActiveItems(ctx context.Context) ([]models.Item, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id, name, description, total_quantity, sort_order, is_active, created_at, updated_at
+		FROM items WHERE is_active = 1 ORDER BY sort_order ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []models.Item
+	for rows.Next() {
+		var it models.Item
+		if err := rows.Scan(&it.ID, &it.Name, &it.Description, &it.TotalQuantity, &it.SortOrder, &it.IsActive, &it.CreatedAt, &it.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
+
+// UpdateItem обновляет данные и, при необходимости, сортировку.
+func (db *DB) UpdateItem(ctx context.Context, item *models.Item) error {
+	if item == nil {
+		return fmt.Errorf("item is nil")
+	}
+	current, err := db.GetItemByName(ctx, item.Name)
+	if err != nil {
+		return err
+	}
+	newOrder := item.SortOrder
+	if newOrder <= 0 {
+		newOrder = current.SortOrder
+	}
+	_, err = db.ExecContext(ctx, `UPDATE items SET description = ?, total_quantity = ?, sort_order = ?, updated_at = ? WHERE id = ?`,
+		item.Description, item.TotalQuantity, newOrder, time.Now(), current.ID)
+	return err
+}
+
+// DeactivateItem снимает item с публикации.
+func (db *DB) DeactivateItem(ctx context.Context, id int64) error {
+	_, err := db.ExecContext(ctx, `UPDATE items SET is_active = 0, updated_at = ? WHERE id = ?`, time.Now(), id)
+	return err
+}
+
+// ReorderItem меняет sort_order и сдвигает соседей в транзакции.
+func (db *DB) ReorderItem(ctx context.Context, id int64, newOrder int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var currentOrder int64
+	if err := tx.QueryRowContext(ctx, `SELECT sort_order FROM items WHERE id = ?`, id).Scan(&currentOrder); err != nil {
+		return err
+	}
+	if newOrder < 1 {
+		newOrder = 1
+	}
+	var maxOrder int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sort_order),1) FROM items`).Scan(&maxOrder); err != nil {
+		return err
+	}
+	if newOrder > maxOrder {
+		newOrder = maxOrder
+	}
+
+	if newOrder < currentOrder {
+		// Сдвиг вниз (элемент поднимаем)
+		if _, err := tx.ExecContext(ctx, `UPDATE items SET sort_order = sort_order + 1 WHERE sort_order >= ? AND sort_order < ?`, newOrder, currentOrder); err != nil {
+			return err
+		}
+	} else if newOrder > currentOrder {
+		// Сдвиг вверх (элемент опускаем)
+		if _, err := tx.ExecContext(ctx, `UPDATE items SET sort_order = sort_order - 1 WHERE sort_order <= ? AND sort_order > ?`, newOrder, currentOrder); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE items SET sort_order = ?, updated_at = ? WHERE id = ?`, newOrder, time.Now(), id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func scanItem(row *sql.Row) (*models.Item, error) {
+	var it models.Item
+	if err := row.Scan(&it.ID, &it.Name, &it.Description, &it.TotalQuantity, &it.SortOrder, &it.IsActive, &it.CreatedAt, &it.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return &it, nil
 }
 
 // CheckAvailability проверяет доступность позиции на указанную дату

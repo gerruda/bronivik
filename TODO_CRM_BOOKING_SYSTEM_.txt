@@ -1,0 +1,1036 @@
+# 📋 TODO:  Развитие системы бронирования
+
+## 🎯 Общая концепция
+
+Создание полноценной CRM-системы бронирования, состоящей из двух связанных ботов:
+1. **bronivik_jr** (существующий) — бронирование оборудования на целый день
+2. **bronivik_crm** (новый) — бронирование кабинетов на часы с синхронизацией доступности оборудования
+
+---
+
+# 📌 ЧАСТЬ 1: Доработки существующего бота (bronivik_jr)
+
+## 1. 1 API Endpoint для проверки доступности оборудования
+
+### 1.1.1 Создание HTTP-сервера
+- [ ] **Создать файл `internal/api/server.go`**
+  - [ ] Инициализация HTTP-сервера (gin/chi/стандартный net/http)
+  - [ ] Настройка middleware для логирования
+  - [ ] Настройка CORS (если нужно)
+  - [ ] Graceful shutdown
+
+- [ ] **Создать файл `internal/api/handlers. go`**
+  - [ ] Handler `GET /api/v1/availability/{item_name}? date={date}`
+    - Проверка доступности аппарата по имени и дате
+    - Возвращает:  `{"available": true/false, "booked_count": N, "total":  M}`
+  - [ ] Handler `GET /api/v1/availability/bulk`
+    - Массовая проверка доступности
+    - Body: `{"items": ["item1", "item2"], "dates": ["2025-12-22", "2025-12-23"]}`
+  - [ ] Handler `GET /api/v1/items`
+    - Список всех аппаратов с их total_quantity
+
+### 1.1.2 Авторизация API
+- [ ] **Создать файл `internal/api/auth.go`**
+  - [ ] Middleware для проверки API-ключа в заголовке `X-API-Key`
+  - [ ] Хранение API-ключей в конфиге или базе
+  - [ ] Rate limiting для защиты от DDoS
+
+- [ ] **Обновить `configs/config.yaml`**
+  ```yaml
+  api: 
+    enabled: true
+    port: 8081
+    api_keys:
+      - key: "secret-key-for-crm-bot"
+        name: "bronivik_crm"
+        permissions:  ["read: availability", "read:items"]
+  ```
+
+### 1.1.3 Модификация database
+- [ ] **Добавить метод в `internal/database/database.go`**
+  ```go
+  // GetItemAvailabilityByName проверяет доступность по имени аппарата
+  func (db *DB) GetItemAvailabilityByName(ctx context.Context, itemName string, date time.Time) (*AvailabilityInfo, error)
+  
+  // GetItemByName возвращает аппарат по имени
+  func (db *DB) GetItemByName(ctx context. Context, name string) (*models.Item, error)
+  ```
+
+### 1.1.4 Интеграция в main.go
+- [ ] **Запуск API-сервера параллельно с ботом**
+  ```go
+  // В main.go
+  if cfg.API.Enabled {
+      apiServer := api.NewServer(cfg, db)
+      go apiServer.Start()
+  }
+  ```
+
+---
+
+## 1.2 Рефакторинг синхронизации с Google Sheets
+
+### 1.2.1 Переход на точечное обновление
+- [ ] **Рефакторинг `internal/google/sheets_simple.go`**
+  - [ ] Заменить `ReplaceBookingsSheet()` на:
+    ```go
+    // UpsertBooking обновляет или вставляет одну запись
+    func (s *SheetsService) UpsertBooking(booking *models.Booking) error
+    
+    // DeleteBookingRow удаляет строку бронирования
+    func (s *SheetsService) DeleteBookingRow(bookingID int64) error
+    
+    // UpdateBookingStatus обновляет только статус в строке
+    func (s *SheetsService) UpdateBookingStatus(bookingID int64, status string) error
+    ```
+  
+  - [ ] Реализовать поиск строки по ID бронирования
+    ```go
+    // FindBookingRow находит номер строки по ID бронирования
+    func (s *SheetsService) FindBookingRow(bookingID int64) (int, error)
+    ```
+
+  - [ ] Кэширование маппинга `booking_id -> row_number` в Redis/memory
+
+### 1.2.2 Создание Worker для отложенных обновлений
+- [ ] **Создать файл `internal/worker/sheets_worker.go`**
+  ```go
+  type SheetsWorker struct {
+      queue chan SheetTask
+      sheetsService *google.SheetsService
+      retryPolicy RetryPolicy
+  }
+  
+  type SheetTask struct {
+      Type       string // "upsert", "delete", "update_status"
+      BookingID  int64
+      Booking    *models. Booking
+      Status     string
+      RetryCount int
+      CreatedAt  time. Time
+  }
+  
+  func (w *SheetsWorker) Start(ctx context.Context)
+  func (w *SheetsWorker) EnqueueTask(task SheetTask)
+  ```
+
+- [ ] **Создать очередь задач**
+  - [ ] Использовать Redis для персистентной очереди
+  - [ ] Fallback на in-memory queue
+  - [ ] Retry logic с exponential backoff
+  - [ ] Dead letter queue для failed tasks
+
+- [ ] **Создать файл `internal/worker/retry. go`**
+  ```go
+  type RetryPolicy struct {
+      MaxRetries     int
+      InitialDelay   time.Duration
+      MaxDelay       time.Duration
+      BackoffFactor  float64
+  }
+  
+  func (r *RetryPolicy) NextDelay(attempt int) time.Duration
+  ```
+
+### 1.2.3 Создание таблицы для очереди синхронизации
+- [ ] **Добавить миграцию в `internal/database/database.go`**
+  ```sql
+  CREATE TABLE IF NOT EXISTS sync_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_type TEXT NOT NULL,
+      booking_id INTEGER NOT NULL,
+      payload TEXT, -- JSON
+      status TEXT DEFAULT 'pending', -- pending, processing, completed, failed
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      processed_at DATETIME,
+      next_retry_at DATETIME
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
+  CREATE INDEX IF NOT EXISTS idx_sync_queue_next_retry ON sync_queue(next_retry_at);
+  ```
+
+- [ ] **CRUD методы для sync_queue**
+  ```go
+  func (db *DB) CreateSyncTask(ctx context.Context, task *SyncTask) error
+  func (db *DB) GetPendingSyncTasks(ctx context.Context, limit int) ([]SyncTask, error)
+  func (db *DB) UpdateSyncTaskStatus(ctx context.Context, id int64, status string, err string) error
+  func (db *DB) GetFailedSyncTasks(ctx context.Context) ([]SyncTask, error)
+  ```
+
+### 1.2.4 Интеграция воркера
+- [ ] **Модифицировать точки вызова синхронизации**
+  - [ ] `finalizeBooking()` — добавить задачу в очередь вместо прямого вызова
+  - [ ] `confirmBooking()` — добавить задачу в очередь
+  - [ ] `cancelBooking()` — добавить задачу в очередь
+  - [ ] `completeBooking()` — добавить задачу в очередь
+
+- [ ] **Пример модификации в `internal/bot/utils.go`**
+  ```go
+  // Было: 
+  go func() {
+      time.Sleep(1 * time.Second)
+      b.SyncBookingsToSheets()
+  }()
+  
+  // Стало:
+  b.sheetsWorker.EnqueueTask(SheetTask{
+      Type:       "upsert",
+      BookingID: booking.ID,
+      Booking:    &booking,
+  })
+  ```
+
+---
+
+## 1.3 Устранение блокировок и data race
+
+### 1.3.1 Анализ текущих проблем
+- [ ] **Выявить синхронные вызовы, блокирующие UI**
+  - `SyncBookingsToSheets()` — вызывается синхронно
+  - `SyncScheduleToSheets()` — вызывается синхронно
+  - `AppendBookingToSheets()` — вызывается синхронно
+
+### 1.3.2 Внедрение паттерна "Event Sourcing Light"
+- [ ] **Создать файл `internal/events/events.go`**
+  ```go
+  type Event struct {
+      ID        int64
+      Type      string // booking_created, booking_confirmed, etc.
+      Payload   json.RawMessage
+      CreatedAt time.Time
+      Processed bool
+  }
+  
+  type EventBus struct {
+      subscribers map[string][]EventHandler
+      mu          sync.RWMutex
+  }
+  
+  type EventHandler func(event Event) error
+  ```
+
+- [ ] **События для бронирований**
+  - `booking_created` — новое бронирование
+  - `booking_confirmed` — подтверждено менеджером
+  - `booking_cancelled` — отменено
+  - `booking_completed` — завершено
+  - `booking_item_changed` — изменен аппарат
+
+### 1.3.3 Защита от data race
+- [ ] **Использовать транзакции для критических операций**
+  ```go
+  func (db *DB) CreateBookingWithLock(ctx context. Context, booking *models.Booking) error {
+      tx, err := db. BeginTx(ctx, nil)
+      if err != nil {
+          return err
+      }
+      defer tx.Rollback()
+      
+      // 1. Проверка доступности внутри транзакции
+      available, err := checkAvailabilityTx(tx, booking.ItemID, booking.Date)
+      if err != nil || !available {
+          return ErrNotAvailable
+      }
+      
+      // 2. Создание бронирования
+      err = createBookingTx(tx, booking)
+      if err != nil {
+          return err
+      }
+      
+      // 3. Добавление события в очередь
+      err = createSyncTaskTx(tx, booking)
+      if err != nil {
+          return err
+      }
+      
+      return tx.Commit()
+  }
+  ```
+
+- [ ] **Добавить optimistic locking для бронирований**
+  ```sql
+  ALTER TABLE bookings ADD COLUMN version INTEGER DEFAULT 1;
+  ```
+  
+  ```go
+  func (db *DB) UpdateBookingWithVersion(ctx context.Context, booking *models. Booking) error {
+      result, err := db.ExecContext(ctx, 
+          `UPDATE bookings SET status = ?, version = version + 1, updated_at = ? 
+           WHERE id = ?  AND version = ?`,
+          booking.Status, time.Now(), booking.ID, booking.Version)
+      
+      rows, _ := result.RowsAffected()
+      if rows == 0 {
+          return ErrConcurrentModification
+      }
+      return nil
+  }
+  ```
+
+---
+
+## 1.4 Улучшения конфигурации
+
+### 1.4.1 Хранение items в базе данных
+- [ ] **Создать таблицу items**
+  ```sql
+  CREATE TABLE IF NOT EXISTS items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      total_quantity INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_items_sort ON items(sort_order, id);
+  ```
+
+- [ ] **CRUD для items**
+  ```go
+  func (db *DB) GetActiveItems(ctx context. Context) ([]models.Item, error)
+  func (db *DB) CreateItem(ctx context.Context, item *models.Item) error
+  func (db *DB) UpdateItem(ctx context. Context, item *models.Item) error
+  func (db *DB) ReorderItem(ctx context.Context, id int64, newOrder int64) error
+  func (db *DB) DeactivateItem(ctx context.Context, id int64) error
+  ```
+
+- [ ] **Команды бота для управления items (только для менеджеров)**
+  - `/add_item <name> <quantity>` — добавить аппарат
+  - `/edit_item <name> <new_quantity>` — изменить количество
+  - `/list_items` — список аппаратов
+  - `/disable_item <name>` — деактивировать
+  - `/set_item_order <name> <order>` — установить порядок вывода
+  - `/move_item_up <name>` / `/move_item_down <name>` — поменять местами с соседним
+
+---
+
+# 📌 ЧАСТЬ 2: Новый бот (bronivik_crm)
+
+## 2.1 Архитектура нового бота
+
+### 2.1.1 Структура проекта
+```
+bronivik_crm/
+├── cmd/
+│   └── bot/
+│       └── main.go
+├── configs/
+│   └── config.yaml
+├── internal/
+│   ├── api/
+│   │   └── client.go          # Клиент для API bronivik_jr
+│   ├── bot/
+│   │   ├── bot.go
+│   │   ├── handler.go
+│   │   ├── manager.go
+│   │   ├── cabinet_handler.go # Работа с кабинетами
+│   │   └── booking_handler.go # Почасовое бронирование
+│   ├── database/
+│   │   └── database. go
+│   ├── models/
+│   │   ├── cabinet.go
+│   │   ├── cabinet_schedule.go
+│   │   ├── hourly_booking.go
+│   │   └── user.go
+│   ├── google/
+│   │   └── sheets.go
+│   └── worker/
+│       └── sync_worker.go
+├── docker/
+│   └── docker-compose.yml
+├── go.mod
+├── go. sum
+└── Dockerfile
+```
+
+### 2.1.2 Основные сущности
+
+#### Кабинеты (Cabinets)
+- [ ] **Создать файл `internal/models/cabinet. go`**
+  ```go
+  package models
+  
+  import "time"
+  
+  type Cabinet struct {
+      ID          int64     `json:"id"`
+      Name        string    `json:"name"`
+      Description string    `json:"description"`
+      IsActive    bool      `json:"is_active"`
+      CreatedAt   time.Time `json:"created_at"`
+      UpdatedAt   time. Time `json:"updated_at"`
+  }
+  ```
+
+#### Расписание кабинетов (Cabinet Schedule)
+- [ ] **Создать файл `internal/models/cabinet_schedule. go`**
+  ```go
+  package models
+  
+  import "time"
+  
+  type CabinetSchedule struct {
+      ID         int64     `json:"id"`
+      CabinetID  int64     `json:"cabinet_id"`
+      DayOfWeek  int       `json:"day_of_week"` // 0-6 (Sunday-Saturday)
+      StartTime  string    `json:"start_time"`  // "09:00"
+      EndTime    string    `json:"end_time"`    // "18:00"
+      SlotDuration int     `json:"slot_duration"` // в минутах (60)
+      IsActive   bool      `json:"is_active"`
+      CreatedAt  time.Time `json:"created_at"`
+      UpdatedAt  time.Time `json:"updated_at"`
+  }
+  
+  // CabinetScheduleOverride для исключений (праздники, особые дни)
+  type CabinetScheduleOverride struct {
+      ID         int64     `json:"id"`
+      CabinetID  int64     `json:"cabinet_id"`
+      Date       time.Time `json:"date"`
+      IsClosed   bool      `json:"is_closed"` // полностью закрыт
+      StartTime  string    `json:"start_time"`
+      EndTime    string    `json:"end_time"`
+      Reason     string    `json:"reason"`
+      CreatedAt  time.Time `json:"created_at"`
+  }
+  ```
+
+#### Почасовое бронирование
+- [ ] **Создать файл `internal/models/hourly_booking.go`**
+  ```go
+  package models
+  
+  import "time"
+  
+  type HourlyBooking struct {
+      ID           int64     `json:"id"`
+      UserID       int64     `json:"user_id"`
+      UserName     string    `json:"user_name"`
+      UserNickname string    `json:"user_nickname"`
+      Phone        string    `json:"phone"`
+      CabinetID    int64     `json:"cabinet_id"`
+      CabinetName  string    `json:"cabinet_name"`
+      ItemID       int64     `json:"item_id"`      // ID аппарата из bronivik_jr
+      ItemName     string    `json:"item_name"`    // Имя аппарата
+      Date         time.Time `json:"date"`
+      StartTime    string    `json:"start_time"`   // "10:00"
+      EndTime      string    `json:"end_time"`     // "11:00"
+      Status       string    `json:"status"`       // pending, confirmed, cancelled, completed
+      Comment      string    `json:"comment"`
+      ClientName   string    `json:"client_name"`  // Имя клиента (для CRM)
+      ClientPhone  string    `json:"client_phone"` // Телефон клиента
+      CreatedAt    time.Time `json:"created_at"`
+      UpdatedAt    time.Time `json:"updated_at"`
+  }
+  ```
+
+---
+
+## 2.2 База данных CRM бота
+
+### 2.2.1 Миграции
+- [ ] **Создать `internal/database/database. go`**
+  ```go
+  func createTables(db *sql.DB) error {
+      queries := []string{
+          // Пользователи (аналогично bronivik_jr)
+          `CREATE TABLE IF NOT EXISTS users (...)`,
+          
+          // Кабинеты
+          `CREATE TABLE IF NOT EXISTS cabinets (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT UNIQUE NOT NULL,
+              description TEXT,
+              is_active BOOLEAN DEFAULT 1,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )`,
+          
+          // Расписание кабинетов
+          `CREATE TABLE IF NOT EXISTS cabinet_schedules (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              cabinet_id INTEGER NOT NULL,
+              day_of_week INTEGER NOT NULL, -- 0-6
+              start_time TEXT NOT NULL,      -- "09:00"
+              end_time TEXT NOT NULL,        -- "18:00"
+              slot_duration INTEGER DEFAULT 60, -- минуты
+              is_active BOOLEAN DEFAULT 1,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (cabinet_id) REFERENCES cabinets(id),
+              UNIQUE(cabinet_id, day_of_week)
+          )`,
+          
+          // Исключения расписания
+          `CREATE TABLE IF NOT EXISTS cabinet_schedule_overrides (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              cabinet_id INTEGER NOT NULL,
+              date DATE NOT NULL,
+              is_closed BOOLEAN DEFAULT 0,
+              start_time TEXT,
+              end_time TEXT,
+              reason TEXT,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (cabinet_id) REFERENCES cabinets(id),
+              UNIQUE(cabinet_id, date)
+          )`,
+          
+          // Почасовые бронирования
+          `CREATE TABLE IF NOT EXISTS hourly_bookings (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL,
+              user_name TEXT NOT NULL,
+              user_nickname TEXT,
+              phone TEXT,
+              cabinet_id INTEGER NOT NULL,
+              cabinet_name TEXT NOT NULL,
+              item_id INTEGER, -- из bronivik_jr
+              item_name TEXT,
+              date DATE NOT NULL,
+              start_time TEXT NOT NULL,
+              end_time TEXT NOT NULL,
+              status TEXT DEFAULT 'pending',
+              comment TEXT,
+              client_name TEXT,
+              client_phone TEXT,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              version INTEGER DEFAULT 1,
+              FOREIGN KEY (cabinet_id) REFERENCES cabinets(id)
+          )`,
+          
+          // Очередь синхронизации
+          `CREATE TABLE IF NOT EXISTS sync_queue (...)`,
+          
+          // Индексы
+          `CREATE INDEX IF NOT EXISTS idx_hourly_bookings_date ON hourly_bookings(date)`,
+          `CREATE INDEX IF NOT EXISTS idx_hourly_bookings_cabinet ON hourly_bookings(cabinet_id)`,
+          `CREATE INDEX IF NOT EXISTS idx_hourly_bookings_item ON hourly_bookings(item_id)`,
+          `CREATE INDEX IF NOT EXISTS idx_hourly_bookings_status ON hourly_bookings(status)`,
+          `CREATE INDEX IF NOT EXISTS idx_hourly_bookings_time ON hourly_bookings(date, start_time, end_time)`,
+      }
+      // ... 
+  }
+  ```
+
+### 2.2.2 Методы для работы с кабинетами
+- [ ] **CRUD кабинетов**
+  ```go
+  func (db *DB) CreateCabinet(ctx context. Context, cabinet *models.Cabinet) error
+  func (db *DB) GetCabinet(ctx context. Context, id int64) (*models.Cabinet, error)
+  func (db *DB) GetActiveCabinets(ctx context. Context) ([]models.Cabinet, error)
+  func (db *DB) UpdateCabinet(ctx context.Context, cabinet *models.Cabinet) error
+  func (db *DB) DeactivateCabinet(ctx context.Context, id int64) error
+  ```
+
+### 2.2.3 Методы для работы с расписанием
+- [ ] **CRUD расписания**
+  ```go
+  func (db *DB) SetCabinetSchedule(ctx context. Context, schedule *models.CabinetSchedule) error
+  func (db *DB) GetCabinetSchedule(ctx context. Context, cabinetID int64) ([]models.CabinetSchedule, error)
+  func (db *DB) GetCabinetScheduleForDay(ctx context.Context, cabinetID int64, dayOfWeek int) (*models.CabinetSchedule, error)
+  func (db *DB) AddScheduleOverride(ctx context.Context, override *models.CabinetScheduleOverride) error
+  func (db *DB) GetScheduleOverrides(ctx context. Context, cabinetID int64, startDate, endDate time.Time) ([]models.CabinetScheduleOverride, error)
+  ```
+
+### 2.2.4 Методы для почасового бронирования
+- [ ] **Проверка доступности слота**
+  ```go
+  // CheckSlotAvailability проверяет доступность временного слота
+  func (db *DB) CheckSlotAvailability(ctx context.Context, cabinetID int64, date time.Time, startTime, endTime string) (bool, error) {
+      // 1. Проверяем, попадает ли слот в рабочее время кабинета
+      // 2. Проверяем, нет ли override на эту дату
+      // 3. Проверяем, нет ли пересечения с существующими бронированиями
+  }
+  
+  // GetAvailableSlots возвращает все свободные слоты на дату
+  func (db *DB) GetAvailableSlots(ctx context.Context, cabinetID int64, date time.Time) ([]TimeSlot, error)
+  
+  // TimeSlot структура временного слота
+  type TimeSlot struct {
+      StartTime string
+      EndTime   string
+      Available bool
+  }
+  ```
+
+- [ ] **Создание бронирования с проверками**
+  ```go
+  func (db *DB) CreateHourlyBookingWithChecks(ctx context.Context, booking *models.HourlyBooking, bronivikClient *api.BronivikClient) error {
+      tx, err := db. BeginTx(ctx, nil)
+      if err != nil {
+          return err
+      }
+      defer tx.Rollback()
+      
+      // 1. Проверяем доступность кабинета на время
+      available, err := checkSlotAvailabilityTx(tx, booking.CabinetID, booking.Date, booking. StartTime, booking. EndTime)
+      if ! available {
+          return ErrSlotNotAvailable
+      }
+      
+      // 2. Проверяем доступность аппарата через API bronivik_jr
+      if booking.ItemID > 0 {
+          itemAvailable, err := bronivikClient.CheckItemAvailability(booking.ItemName, booking.Date)
+          if err != nil || !itemAvailable {
+              return ErrItemNotAvailable
+          }
+      }
+      
+      // 3. Создаем бронирование
+      err = createHourlyBookingTx(tx, booking)
+      if err != nil {
+          return err
+      }
+      
+      return tx.Commit()
+  }
+  ```
+
+---
+
+## 2.3 Клиент API для связи с bronivik_jr
+
+### 2.3.1 Клиент
+- [ ] **Создать файл `internal/api/client.go`**
+  ```go
+  package api
+  
+  import (
+      "context"
+      "encoding/json"
+      "fmt"
+      "net/http"
+      "time"
+  )
+  
+  type BronivikClient struct {
+      baseURL    string
+      apiKey     string
+      httpClient *http.Client
+  }
+  
+  type AvailabilityResponse struct {
+      Available   bool  `json:"available"`
+      BookedCount int   `json:"booked_count"`
+      Total       int   `json:"total"`
+  }
+  
+  type Item struct {
+      ID            int64  `json:"id"`
+      Name          string `json:"name"`
+      TotalQuantity int64  `json:"total_quantity"`
+  }
+  
+  func NewBronivikClient(baseURL, apiKey string) *BronivikClient {
+      return &BronivikClient{
+          baseURL:  baseURL,
+          apiKey:  apiKey,
+          httpClient: &http.Client{
+              Timeout: 10 * time.Second,
+          },
+      }
+  }
+  
+  // CheckItemAvailability проверяет доступность аппарата
+  func (c *BronivikClient) CheckItemAvailability(itemName string, date time. Time) (bool, error) {
+      url := fmt.Sprintf("%s/api/v1/availability/%s? date=%s", 
+          c.baseURL, itemName, date.Format("2006-01-02"))
+      
+      req, err := http.NewRequest("GET", url, nil)
+      if err != nil {
+          return false, err
+      }
+      req.Header.Set("X-API-Key", c.apiKey)
+      
+      resp, err := c. httpClient.Do(req)
+      if err != nil {
+          return false, err
+      }
+      defer resp.Body. Close()
+      
+      if resp.StatusCode != http.StatusOK {
+          return false, fmt.Errorf("API returned status %d", resp.StatusCode)
+      }
+      
+      var result AvailabilityResponse
+      if err := json.NewDecoder(resp. Body).Decode(&result); err != nil {
+          return false, err
+      }
+      
+      return result.Available, nil
+  }
+  
+  // GetItems получает список всех аппаратов
+  func (c *BronivikClient) GetItems() ([]Item, error) {
+      // ... 
+  }
+  
+  // BulkCheckAvailability массовая проверка
+  func (c *BronivikClient) BulkCheckAvailability(items []string, dates []time.Time) (map[string]map[string]bool, error) {
+      // ...
+  }
+  ```
+
+### 2.3.2 Кэширование результатов
+- [ ] **Добавить кэширование через Redis**
+  ```go
+  type CachedBronivikClient struct {
+      client      *BronivikClient
+      redisClient *redis. Client
+      cacheTTL    time.Duration
+  }
+  
+  func (c *CachedBronivikClient) CheckItemAvailability(itemName string, date time.Time) (bool, error) {
+      cacheKey := fmt. Sprintf("item_availability:%s:%s", itemName, date.Format("2006-01-02"))
+      
+      // Проверяем кэш
+      cached, err := c.redisClient.Get(ctx, cacheKey).Result()
+      if err == nil {
+          return cached == "true", nil
+      }
+      
+      // Запрос к API
+      available, err := c. client.CheckItemAvailability(itemName, date)
+      if err != nil {
+          return false, err
+      }
+      
+      // Сохраняем в кэш
+      c.redisClient. Set(ctx, cacheKey, fmt.Sprintf("%t", available), c.cacheTTL)
+      
+      return available, nil
+  }
+  ```
+
+---
+
+## 2.4 Telegram Bot Handlers
+
+### 2.4.1 Команды пользователя
+- [ ] **Основные команды**
+  - `/start` — начало работы
+  - `/book` — создать бронирование кабинета
+  - `/my_bookings` — мои бронирования
+  - `/cancel_booking [ID]` — отменить бронирование
+  - `/help` — справка
+
+### 2.4.2 Команды менеджера
+- [ ] **Управление кабинетами**
+  - `/add_cabinet <name>` — добавить кабинет
+  - `/list_cabinets` — список кабинетов
+  - `/cabinet_schedule <cabinet_id>` — просмотр расписания
+  - `/set_schedule <cabinet_id> <day> <start> <end>` — установить расписание
+  - `/close_cabinet <cabinet_id> <date> [reason]` — закрыть кабинет на дату
+  
+- [ ] **Управление бронированиями**
+  - `/pending` — ожидающие подтверждения
+  - `/approve [ID]` — подтвердить
+  - `/reject [ID]` — отклонить
+  - `/today_schedule` — расписание на сегодня
+  - `/tomorrow_schedule` — расписание на завтра
+
+### 2.4.3 Сценарий бронирования
+- [ ] **Реализовать flow бронирования**
+  ```
+  1. Пользователь:  /book
+  2. Бот: Выберите кабинет [инлайн клавиатура с кабинетами]
+  3. Пользователь: [выбирает кабинет]
+  4. Бот: Выберите аппарат (или "Без аппарата") [клавиатура]
+     - Бот проверяет доступность аппаратов через API bronivik_jr
+     - Показывает только доступные на выбранные даты
+  5. Пользователь: [выбирает аппарат]
+  6. Бот: Выберите дату [календарь]
+  7. Пользователь: [выбирает дату]
+  8. Бот:  Выберите время [слоты с учетом доступности кабинета И аппарата]
+  9. Пользователь:  [выбирает время]
+  10. Бот:  Введите данные клиента (ФИО, телефон)
+  11. Бот: Подтверждение бронирования
+  12. Уведомление менеджерам
+  ```
+
+### 2.4.4 Календарь и выбор времени
+- [ ] **Создать `internal/bot/calendar.go`**
+  ```go
+  // GenerateCalendarKeyboard создает инлайн-клавиатуру календаря
+  func GenerateCalendarKeyboard(year, month int, availableDates map[string]bool) tgbotapi. InlineKeyboardMarkup
+  
+  // GenerateTimeSlotsKeyboard создает клавиатуру с временными слотами
+  func GenerateTimeSlotsKeyboard(slots []TimeSlot, selectedDate string) tgbotapi.InlineKeyboardMarkup
+  ```
+
+---
+
+## 2.5 Конфигурация CRM бота
+
+### 2.5.1 Файл конфигурации
+- [ ] **Создать `configs/config.yaml`**
+  ```yaml
+  app:
+    name:  "bronivik-crm"
+    environment: "staging"
+    version: "1.0.0"
+  
+  telegram:
+    bot_token: ${CRM_BOT_TOKEN}
+    debug: true
+  
+  database: 
+    path: "./data/crm.db"
+    postgres:
+      host:  ${POSTGRES_HOST}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      database: "bronivik_crm"
+  
+  redis:
+    host: ${REDIS_HOST}
+    port: 6379
+    password: ${REDIS_PASSWORD}
+    db: 1
+  
+  bronivik_api:
+    base_url: "http://bronivik-jr: 8081"
+    api_key: ${BRONIVIK_API_KEY}
+    timeout: 10s
+    cache_ttl: 5m
+  
+  google: 
+    credentials_file: ${GOOGLE_CREDENTIALS_FILE}
+    spreadsheet_id: ${CRM_SPREADSHEET_ID}
+  
+  managers:
+    - 123456789
+    - 987654321
+  
+  booking: 
+    default_slot_duration: 60  # минуты
+    min_advance_booking: 1     # минимум за 1 час до начала
+    max_advance_days: 30       # максимум на 30 дней вперед
+    allow_multiple_slots: true # разрешить бронирование нескольких слотов подряд
+  ```
+
+---
+
+## 2.6 Docker конфигурация
+
+### 2.6.1 Dockerfile
+- [ ] **Создать `Dockerfile`**
+  ```dockerfile
+  FROM golang: 1.21-alpine AS builder
+  
+  WORKDIR /app
+  COPY go.mod go.sum ./
+  RUN go mod download
+  COPY .  .
+  RUN CGO_ENABLED=0 GOOS=linux go build -o /bronivik-crm ./cmd/bot
+  
+  FROM alpine:latest
+  RUN apk --no-cache add ca-certificates tzdata
+  WORKDIR /app
+  COPY --from=builder /bronivik-crm .
+  COPY configs/ ./configs/
+  
+  CMD ["./bronivik-crm", "--config=configs/config.yaml"]
+  ```
+
+### 2.6.2 Docker Compose для всей системы
+- [ ] **Создать `docker/docker-compose.yml`**
+  ```yaml
+  version:  '3.8'
+  
+  services:
+    bronivik-jr:
+      build: 
+        context: ../bronivik_jr
+        dockerfile: Dockerfile
+      environment:
+        - BOT_TOKEN=${JR_BOT_TOKEN}
+        - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
+      volumes:
+        - jr-data:/app/data
+        - ./credentials.json:/app/credentials.json:ro
+      ports:
+        - "8081:8081"  # API endpoint
+      networks:
+        - bronivik-network
+      depends_on:
+        - redis
+        - postgres
+  
+    bronivik-crm:
+      build: 
+        context: ../bronivik_crm
+        dockerfile: Dockerfile
+      environment:
+        - CRM_BOT_TOKEN=${CRM_BOT_TOKEN}
+        - BRONIVIK_API_KEY=${BRONIVIK_API_KEY}
+        - GOOGLE_CREDENTIALS_FILE=/app/credentials. json
+      volumes: 
+        - crm-data:/app/data
+        - ./credentials.json:/app/credentials.json:ro
+      networks:
+        - bronivik-network
+      depends_on: 
+        - bronivik-jr
+        - redis
+        - postgres
+  
+    postgres:
+      image:  postgres:15-alpine
+      environment: 
+        - POSTGRES_USER=${POSTGRES_USER}
+        - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+        - POSTGRES_DB=bronivik
+      volumes:
+        - postgres-data:/var/lib/postgresql/data
+      networks:
+        - bronivik-network
+  
+    redis: 
+      image: redis: 7-alpine
+      command: redis-server --appendonly yes
+      volumes:
+        - redis-data:/data
+      networks: 
+        - bronivik-network
+  
+  volumes:
+    jr-data:
+    crm-data: 
+    postgres-data: 
+    redis-data:
+  
+  networks:
+    bronivik-network: 
+      driver: bridge
+  ```
+
+---
+
+# 📌 ЧАСТЬ 3: Миграция и тестирование
+
+## 3.1 Миграции данных
+
+### 3.1.1 Миграция items в базу данных
+- [ ] **Скрипт миграции `scripts/migrate_items. go`**
+  - Чтение items из config.yaml
+  - Вставка в таблицу items
+  - Проверка уникальности
+
+### 3.1.2 Миграция схемы bronivik_jr
+- [ ] **Добавление новых полей**
+  - `version` для optimistic locking
+  - Индексы для оптимизации
+
+## 3.2 Тестирование
+
+### 3.2.1 Unit тесты
+- [ ] **Тесты для database**
+  - `database_test.go` — тесты CRUD
+  - `availability_test.go` — тесты проверки доступности
+
+- [ ] **Тесты для API**
+  - `api_test.go` — тесты endpoints
+  - `auth_test.go` — тесты авторизации
+
+- [ ] **Тесты для worker**
+  - `worker_test.go` — тесты очереди задач
+  - `retry_test.go` — тесты retry логики
+
+### 3.2.2 Integration тесты
+- [ ] **E2E тесты**
+  - Сценарий бронирования от начала до конца
+  - Проверка синхронизации с Google Sheets
+  - Проверка взаимодействия двух ботов
+
+### 3.2.3 Load тесты
+- [ ] **Нагрузочное тестирование**
+  - Одновременное бронирование одного слота
+  - Массовая синхронизация с Google Sheets
+  - Проверка rate limiting API
+
+---
+
+# 📌 ЧАСТЬ 4: Мониторинг и логирование
+
+## 4.1 Метрики
+
+### 4.1.1 Prometheus метрики
+- [ ] **Метрики для bronivik_jr**
+  - `bookings_total` — общее количество бронирований
+  - `api_requests_total` — количество API запросов
+  - `sheets_sync_duration_seconds` — время синхронизации
+  - `sheets_sync_errors_total` — ошибки синхронизации
+
+- [ ] **Метрики для bronivik_crm**
+  - `hourly_bookings_total`
+  - `cabinet_occupancy_rate`
+  - `bronivik_api_requests_total`
+  - `bronivik_api_latency_seconds`
+
+### 4.1.2 Алерты
+- [ ] **Настроить алерты**
+  - Sheets sync failed > 5 раз подряд
+  - API недоступен > 1 минуты
+  - База данных недоступна
+
+## 4.2 Логирование
+
+### 4.2.1 Structured logging
+- [ ] **Внедрить structured logging (zerolog/zap)**
+  - Request ID для трейсинга
+  - Уровни логирования
+  - JSON формат для продакшена
+
+---
+
+# 📌 ПРИОРИТЕТЫ РЕАЛИЗАЦИИ
+
+## Фаза 1: Критические изменения bronivik_jr (1-2 недели)
+1. ✅ API endpoint для проверки доступности
+2. ✅ Асинхронная синхронизация с Google Sheets (worker)
+3. ✅ Защита от data race (транзакции)
+
+## Фаза 2: Базовый функционал bronivik_crm (2-3 недели)
+1. ✅ Структура проекта и модели
+2. ✅ Работа с кабинетами и расписанием
+3. ✅ Клиент API для bronivik_jr
+4. ✅ Базовый flow бронирования
+
+## Фаза 3: Интеграция и UI (1-2 недели)
+1. ✅ Календарь и выбор времени
+2. ✅ Уведомления менеджерам
+3. ✅ Интеграция с Google Sheets
+
+## Фаза 4: Полировка (1 неделя)
+1. ✅ Тестирование
+2. ✅ Мониторинг
+3. ✅ Документация
+4. ✅ Деплой
+
+---
+
+# 📝 ЗАМЕТКИ
+
+## Потенциальные проблемы
+1. **Синхронизация доступности** — если аппарат забронирован в bronivik_jr после проверки в bronivik_crm, возможен конфликт
+   - Решение:  финальная проверка перед подтверждением + уведомление
+
+2. **Google API rate limits** — при большом количестве операций
+   - Решение: batching операций + exponential backoff
+
+3. **Отказоустойчивость** — если bronivik_jr недоступен
+   - Решение:  кэширование + graceful degradation (разрешать бронирование без аппарата)
+
+## Улучшения на будущее
+- [ ] Telegram Mini App для удобного выбора времени
+- [ ] Напоминания клиентам о бронировании
+- [ ] Статистика и аналитика
+- [ ] Интеграция с платежными системами
+- [ ] Мобильное приложение

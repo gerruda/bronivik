@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
+	"os/signal"
+	"syscall"
 
 	"bronivik/internal/bot"
 	"bronivik/internal/config"
@@ -101,6 +104,14 @@ func main() {
 		log.Fatal("Ошибка создания бота:", err)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	log.Println("Бот запущен...")
-	telegramBot.Start()
+	go telegramBot.Start()
+
+	<-ctx.Done()
+	log.Println("Shutdown signal received...")
+
+	telegramBot.Stop()
 }

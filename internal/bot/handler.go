@@ -937,3 +937,39 @@ func (b *Bot) AppendBookingToSheets(booking *models.Booking) {
 		log.Printf("Booking %d appended to Google Sheets", booking.ID)
 	}
 }
+
+// appendBookingToSheetsAsync отправляет бронирование в Google Sheets с ретраями, не блокируя основной поток.
+func (b *Bot) appendBookingToSheetsAsync(booking models.Booking) {
+	if b.sheetsService == nil {
+		return
+	}
+
+	go b.retryWithBackoff("append booking to sheets", 3, 2*time.Second, func() error {
+		return b.sheetsService.AppendBooking(&booking)
+	})
+}
+
+// syncBookingsToSheetsAsync запускает полную синхронизацию с ретраями в фоне.
+func (b *Bot) syncBookingsToSheetsAsync() {
+	if b.sheetsService == nil {
+		return
+	}
+
+	go b.retryWithBackoff("sync bookings to sheets", 2, 5*time.Second, func() error {
+		b.SyncBookingsToSheets()
+		return nil
+	})
+}
+
+// retryWithBackoff выполняет fn с экспоненциальной задержкой.
+func (b *Bot) retryWithBackoff(op string, attempts int, baseDelay time.Duration, fn func() error) {
+	for i := 0; i < attempts; i++ {
+		if err := fn(); err != nil {
+			log.Printf("%s attempt %d/%d failed: %v", op, i+1, attempts, err)
+			time.Sleep(baseDelay * time.Duration(1<<i))
+			continue
+		}
+		return
+	}
+	log.Printf("%s failed after %d attempts", op, attempts)
+}

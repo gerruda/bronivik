@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package bronivik.availability.v1;
+
+option go_package = "bronivik/internal/api/gen/availability/v1;availabilityv1";
+
+service AvailabilityService {
+  // Check availability for a single item and date (YYYY-MM-DD).
+  rpc GetAvailability(GetAvailabilityRequest) returns (GetAvailabilityResponse);
+
+  // Bulk availability check.
+  rpc GetAvailabilityBulk(GetAvailabilityBulkRequest) returns (GetAvailabilityBulkResponse);
+
+  // List all known items with their total quantity.
+  rpc ListItems(ListItemsRequest) returns (ListItemsResponse);
+}
+
+message GetAvailabilityRequest {
+  string item_name = 1;
+  string date = 2; // YYYY-MM-DD
+}
+
+message GetAvailabilityResponse {
+  string item_name = 1;
+  string date = 2; // YYYY-MM-DD
+  bool available = 3;
+  int64 booked_count = 4;
+  int64 total = 5;
+}
+
+message GetAvailabilityBulkRequest {
+  repeated string items = 1;
+  repeated string dates = 2; // YYYY-MM-DD
+}
+
+message Availability {
+  string item_name = 1;
+  string date = 2; // YYYY-MM-DD
+  bool available = 3;
+  int64 booked_count = 4;
+  int64 total = 5;
+}
+
+message GetAvailabilityBulkResponse {
+  repeated Availability results = 1;
+}
+
+message ListItemsRequest {}
+
+message Item {
+  int64 id = 1;
+  string name = 2;
+  int64 total_quantity = 3;
+}
+
+message ListItemsResponse {
+  repeated Item items = 1;
+}

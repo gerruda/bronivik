@@ -16,12 +16,53 @@ type Config struct {
 	Backup           BackupConfig     `yaml:"backup"`
 	Monitoring       MonitoringConfig `yaml:"monitoring"`
 	Logging          LoggingConfig    `yaml:"logging"`
+	API              APIConfig        `yaml:"api"`
 	Managers         []int64          `yaml:"managers"`
 	ManagersContacts []string         `yaml:"managers_contacts"`
 	Blacklist        []int64          `yaml:"blacklist"`
 	Items            []models.Item    `yaml:"items"`
 	Exports          ExportConfig     `yaml:"exports"`
 	Google           GoogleConfig     `yaml:"google"`
+}
+
+type APIConfig struct {
+	Enabled   bool              `yaml:"enabled"`
+	GRPC      APIGRPCConfig      `yaml:"grpc"`
+	Auth      APIAuthConfig      `yaml:"auth"`
+	RateLimit APIRateLimitConfig `yaml:"rate_limit"`
+}
+
+type APIGRPCConfig struct {
+	Port       int  `yaml:"port"`
+	Reflection bool `yaml:"reflection"`
+	TLS        APITLSConfig `yaml:"tls"`
+}
+
+type APITLSConfig struct {
+	Enabled           bool   `yaml:"enabled"`
+	CertFile          string `yaml:"cert_file"`
+	KeyFile           string `yaml:"key_file"`
+	ClientCAFile      string `yaml:"client_ca_file"`
+	RequireClientCert bool   `yaml:"require_client_cert"`
+}
+
+type APIAuthConfig struct {
+	Enabled      bool            `yaml:"enabled"`
+	HeaderAPIKey string          `yaml:"header_api_key"`
+	HeaderExtra  string          `yaml:"header_extra"`
+	APIKeys      []APIClientKey  `yaml:"api_keys"`
+}
+
+type APIClientKey struct {
+	Key         string   `yaml:"key"`
+	Extra       string   `yaml:"extra"`
+	Name        string   `yaml:"name"`
+	Permissions []string `yaml:"permissions"`
+}
+
+type APIRateLimitConfig struct {
+	RPS   float64 `yaml:"rps"`
+	Burst int     `yaml:"burst"`
 }
 
 type ExportConfig struct {
@@ -110,5 +151,23 @@ func Load(configPath string) (*Config, error) {
 		return nil, err
 	}
 
+	config.applyDefaults()
+
 	return &config, nil
+}
+
+func (c *Config) applyDefaults() {
+	if c.API.GRPC.Port == 0 {
+		c.API.GRPC.Port = 8081
+	}
+	// auth enabled by default when API is enabled
+	if !c.API.Auth.Enabled {
+		c.API.Auth.Enabled = true
+	}
+	if c.API.Auth.HeaderAPIKey == "" {
+		c.API.Auth.HeaderAPIKey = "x-api-key"
+	}
+	if c.API.Auth.HeaderExtra == "" {
+		c.API.Auth.HeaderExtra = "x-api-extra"
+	}
 }

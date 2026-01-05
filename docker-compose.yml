@@ -6,7 +6,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: booking-bot
-    restart: "on-failure"  # Измените на "no" для диагностики
+    restart: "on-failure"
+    command: ["./bot"]
     env_file:
       - .env
     environment:
@@ -16,6 +17,31 @@ services:
       - .env:/app/.env
       - ./logs:/app/logs
       - ./data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grpc-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: booking-api
+    restart: "on-failure"
+    command: ["./api"]
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+    volumes:
+      - ./configs:/app/configs
+      - .env:/app/.env
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./certs:/app/certs
     logging:
       driver: "json-file"
       options:
