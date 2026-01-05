@@ -46,7 +46,8 @@ func newIntegrationHTTPServer(db *database.DB) *HTTPServer {
 func newIntegrationDB(t *testing.T) *database.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "integration.db")
-	db, err := database.NewDB(path)
+	logger := zerolog.New(io.Discard)
+	db, err := database.NewDB(path, &logger)
 	if err != nil {
 		t.Fatalf("new db: %v", err)
 	}
@@ -68,7 +69,7 @@ func insertIntegrationBooking(t *testing.T, db *database.DB, item models.Item, d
 	_, err := db.ExecContext(context.Background(), `
 		INSERT INTO bookings (user_id, user_name, user_nickname, phone, item_id, item_name, date, status, comment, created_at, updated_at, version)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
-	`, int64(1), "tester", "tester_nick", "+100", item.ID, item.Name, date, status)
+	`, int64(1), "tester", "tester_nick", "+100", item.ID, item.Name, date.Format("2006-01-02"), status)
 	if err != nil {
 		t.Fatalf("insert booking: %v", err)
 	}

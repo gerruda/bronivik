@@ -2,8 +2,8 @@ package bot
 
 // Stop stops receiving Telegram updates (best-effort).
 func (b *Bot) Stop() {
-	if b == nil || b.bot == nil {
+	if b == nil || b.tgService == nil {
 		return
 	}
-	b.bot.StopReceivingUpdates()
+	b.tgService.StopReceivingUpdates()
 }

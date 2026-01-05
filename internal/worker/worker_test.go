@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"bronivik/internal/database"
 	"bronivik/internal/models"
+
+	"github.com/rs/zerolog"
 )
 
 func TestProcessTaskSuccess(t *testing.T) {
@@ -31,7 +34,7 @@ func TestProcessTaskSuccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := worker.EnqueueTask(ctx, SheetTask{Type: TaskUpsert, Booking: booking}); err != nil {
+	if err := worker.EnqueueTask(ctx, TaskUpsert, booking.ID, booking, ""); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
 
@@ -64,7 +67,7 @@ func TestProcessTaskRetry(t *testing.T) {
 	booking := &models.Booking{ID: 2, UserID: 1, UserName: "tester", Phone: "+100", ItemID: 10, ItemName: "camera", Date: time.Now(), Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
 
 	ctx := context.Background()
-	if err := worker.EnqueueTask(ctx, SheetTask{Type: TaskUpsert, Booking: booking}); err != nil {
+	if err := worker.EnqueueTask(ctx, TaskUpsert, booking.ID, booking, ""); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
 
@@ -112,25 +115,30 @@ type fakeSheets struct {
 	statusCalls int
 }
 
-func (f *fakeSheets) UpsertBooking(*models.Booking) error {
+func (f *fakeSheets) UpsertBooking(ctx context.Context, b *models.Booking) error {
 	f.upsertCalls++
 	return f.err
 }
 
-func (f *fakeSheets) DeleteBookingRow(int64) error {
+func (f *fakeSheets) DeleteBookingRow(ctx context.Context, id int64) error {
 	f.deleteCalls++
 	return f.err
 }
 
-func (f *fakeSheets) UpdateBookingStatus(int64, string) error {
+func (f *fakeSheets) UpdateBookingStatus(ctx context.Context, id int64, status string) error {
 	f.statusCalls++
+	return f.err
+}
+
+func (f *fakeSheets) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]models.Booking, items []models.Item) error {
 	return f.err
 }
 
 func newTestDB(t *testing.T) *database.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "worker.db")
-	db, err := database.NewDB(path)
+	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	db, err := database.NewDB(path, &logger)
 	if err != nil {
 		t.Fatalf("new db: %v", err)
 	}

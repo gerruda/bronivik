@@ -1227,8 +1227,8 @@ bronivik_crm/
 
 ## 5.6 Архитектура (средний приоритет)
 
-### 5.6.1 Dependency Injection
-- [ ] **internal/bot/handler.go: Bot struct**
+### 5.6.1 Dependency Injection [DONE]
+- [x] **internal/bot/handler.go: Bot struct**
   - Зависит напрямую от 6 конкретных типов
   - Решение: Ввести интерфейсы для зависимостей
   ```go
@@ -1241,16 +1241,16 @@ bronivik_crm/
   }
   ```
 
-### 5.6.2 Service Layer
-- [ ] **Извлечь бизнес-логику из bot package**
+### 5.6.2 Service Layer [DONE]
+- [x] **Извлечь бизнес-логику из bot package**
   - Создать internal/service/booking_service.go
   - Bot должен только обрабатывать Telegram API
 
-### 5.6.3 Интерфейсы
-- [ ] **internal/database/database.go**
+### 5.6.3 Интерфейсы [DONE]
+- [x] **internal/database/database.go**
   - Создать `BookingRepository` interface
   - Упростит мокирование для тестов
-- [ ] **internal/bot/handler.go**
+- [x] **internal/bot/handler.go**
   - Создать `TelegramSender` interface
 
 ---

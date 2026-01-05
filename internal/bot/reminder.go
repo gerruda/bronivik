@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // StartReminders schedules daily reminders for next-day bookings.
 func (b *Bot) StartReminders(ctx context.Context) {
-	if b == nil || b.db == nil || b.bot == nil {
+	if b == nil || b.db == nil || b.tgService == nil {
 		return
 	}
 

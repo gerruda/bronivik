@@ -62,13 +62,22 @@ func (db *DB) GetPendingSyncTasks(ctx context.Context, limit int) ([]models.Sync
 }
 
 func (db *DB) UpdateSyncTaskStatus(ctx context.Context, id int64, status string, errMsg string, nextRetryAt *time.Time) error {
-	query := `UPDATE sync_queue SET status = ?, last_error = ?, next_retry_at = ?, processed_at = ?, retry_count = retry_count + 1 WHERE id = ?`
-	var processedAt *time.Time
-	if status == "completed" || status == "failed" {
-		now := time.Now()
-		processedAt = &now
+	var query string
+	var args []interface{}
+	now := time.Now()
+
+	if status == "retry" {
+		query = `UPDATE sync_queue SET status = ?, last_error = ?, next_retry_at = ?, retry_count = retry_count + 1 WHERE id = ?`
+		args = []interface{}{status, errMsg, nextRetryAt, id}
+	} else if status == "completed" || status == "failed" {
+		query = `UPDATE sync_queue SET status = ?, last_error = ?, next_retry_at = ?, processed_at = ? WHERE id = ?`
+		args = []interface{}{status, errMsg, nextRetryAt, &now, id}
+	} else {
+		query = `UPDATE sync_queue SET status = ?, last_error = ?, next_retry_at = ? WHERE id = ?`
+		args = []interface{}{status, errMsg, nextRetryAt, id}
 	}
-	_, err := db.ExecContext(ctx, query, status, errMsg, nextRetryAt, processedAt, id)
+
+	_, err := db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update sync task status: %w", err)
 	}

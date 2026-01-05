@@ -89,7 +89,8 @@ func newTestHTTPServer(db *database.DB) *HTTPServer {
 func newTestDB(t *testing.T) *database.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.NewDB(path)
+	logger := zerolog.New(io.Discard)
+	db, err := database.NewDB(path, &logger)
 	if err != nil {
 		t.Fatalf("new db: %v", err)
 	}
@@ -118,7 +119,7 @@ func insertTestBooking(t *testing.T, db *database.DB, item models.Item, date tim
 		"+100000000",
 		item.ID,
 		item.Name,
-		date,
+		date.Format("2006-01-02"),
 		status,
 	)
 	if err != nil {
