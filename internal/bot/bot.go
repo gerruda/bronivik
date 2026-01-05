@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Bot represents the Telegram bot instance and its dependencies.
 type Bot struct {
 	tgService      domain.TelegramService
 	config         *config.Config
@@ -28,6 +29,7 @@ type Bot struct {
 	logger         *zerolog.Logger
 }
 
+// NewBot creates a new instance of the Telegram bot.
 func NewBot(
 	tgService domain.TelegramService,
 	config *config.Config,
@@ -65,19 +67,7 @@ func NewBot(
 	}, nil
 }
 
-const (
-	StateMainMenu            = "main_menu"
-	StateSelectItem          = "select_item"
-	StateSelectDate          = "select_date"
-	StateViewSchedule        = "view_schedule"
-	StatePersonalData        = "personal_data"
-	StateEnterName           = "enter_name"
-	StatePhoneNumber         = "phone_number"
-	StateConfirmation        = "confirmation"
-	StateWaitingDate         = "waiting_date"
-	StateWaitingSpecificDate = "waiting_specific_date"
-)
-
+// Start begins the bot's update polling loop.
 func (b *Bot) Start(ctx context.Context) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
@@ -100,6 +90,7 @@ func (b *Bot) Start(ctx context.Context) {
 	}
 }
 
+// processUpdate handles a single Telegram update.
 func (b *Bot) processUpdate(ctx context.Context, update tgbotapi.Update) {
 	start := time.Now()
 	defer func() {

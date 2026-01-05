@@ -80,12 +80,12 @@ func (b *Bot) renderPaginatedList(params PaginationParams, totalCount int, items
 			message.String(),
 			markup,
 		)
-		editMsg.ParseMode = "Markdown"
+		editMsg.ParseMode = models.ParseModeMarkdown
 		b.tgService.Send(editMsg)
 	} else {
 		msg := tgbotapi.NewMessage(params.ChatID, message.String())
 		msg.ReplyMarkup = markup
-		msg.ParseMode = "Markdown"
+		msg.ParseMode = models.ParseModeMarkdown
 		b.tgService.Send(msg)
 	}
 }

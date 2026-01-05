@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"bronivik/internal/models"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -77,7 +79,7 @@ func (b *Bot) handleDateSelection(ctx context.Context, update tgbotapi.Update, i
 	msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID,
 		fmt.Sprintf("Вы выбрали: %s\n\nВведите дату в формате ДД.ММ.ГГГГ (например, 25.12.2024):", selectedItem.Name))
 
-	b.setUserState(ctx, update.CallbackQuery.From.ID, StateWaitingDate, map[string]interface{}{
+	b.setUserState(ctx, update.CallbackQuery.From.ID, models.StateWaitingDate, map[string]interface{}{
 		"item_id": itemID,
 	})
 
@@ -92,7 +94,7 @@ func (b *Bot) handleScheduleItemSelected(ctx context.Context, update tgbotapi.Up
 	}
 
 	// Сохраняем выбранный аппарат в состоянии
-	b.setUserState(ctx, update.CallbackQuery.From.ID, "view_schedule", map[string]interface{}{
+	b.setUserState(ctx, update.CallbackQuery.From.ID, models.StateViewSchedule, map[string]interface{}{
 		"item_id": itemID,
 	})
 

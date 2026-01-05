@@ -86,18 +86,18 @@ func (b *Bot) handleMessage(ctx context.Context, update tgbotapi.Update) {
 			b.handleDateSelection(ctx, update, itemID)
 		}
 
-	case state != nil && state.CurrentStep == StateEnterName:
+	case state != nil && state.CurrentStep == models.StateEnterName:
 		state.TempData["user_name"] = b.sanitizeInput(text)
-		b.setUserState(ctx, userID, StatePhoneNumber, state.TempData)
+		b.setUserState(ctx, userID, models.StatePhoneNumber, state.TempData)
 		b.handlePhoneRequest(ctx, update)
 
-	case state != nil && state.CurrentStep == StatePhoneNumber:
+	case state != nil && state.CurrentStep == models.StatePhoneNumber:
 		b.handlePhoneReceived(ctx, update, text)
 
-	case state != nil && state.CurrentStep == StateWaitingSpecificDate:
+	case state != nil && state.CurrentStep == models.StateWaitingSpecificDate:
 		b.handleSpecificDateInput(ctx, update, text)
 
-	case state != nil && state.CurrentStep == StateWaitingDate:
+	case state != nil && state.CurrentStep == models.StateWaitingDate:
 		b.handleDateInput(ctx, update, text, state)
 
 	default:

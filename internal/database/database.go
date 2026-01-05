@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// DB represents the database connection and its cache.
 type DB struct {
 	*sql.DB
 	itemsCache map[int64]models.Item
@@ -32,6 +33,7 @@ var (
 	ErrDateTooFar             = errors.New("date is too far in the future")
 )
 
+// NewDB initializes a new database connection and creates tables if they don't exist.
 func NewDB(path string, logger *zerolog.Logger) (*DB, error) {
 	// Создаем директорию для БД, если её нет
 	dir := filepath.Dir(path)

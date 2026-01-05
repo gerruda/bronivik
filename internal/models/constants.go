@@ -9,6 +9,24 @@ const (
 )
 
 const (
+	ParseModeMarkdown = "Markdown"
+	ParseModeHTML     = "HTML"
+)
+
+const (
+	StateMainMenu            = "main_menu"
+	StateSelectItem          = "select_item"
+	StateSelectDate          = "select_date"
+	StateViewSchedule        = "view_schedule"
+	StatePersonalData        = "personal_data"
+	StateEnterName           = "enter_name"
+	StatePhoneNumber         = "phone_number"
+	StateConfirmation        = "confirmation"
+	StateWaitingDate         = "waiting_date"
+	StateWaitingSpecificDate = "waiting_specific_date"
+)
+
+const (
 	// DefaultRedisTTL время жизни состояния пользователя в Redis
 	DefaultRedisTTL = 24 * 60 * 60 // 24 часа в секундах
 

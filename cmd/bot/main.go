@@ -154,7 +154,7 @@ func main() {
 	subscribeBookingEvents(ctx, eventBus, db, sheetsWorker, &logger)
 
 	// Инициализация бизнес-сервисов
-	bookingService := service.NewBookingService(db, eventBus, sheetsWorker, cfg.Bot.MaxBookingDays, &logger)
+	bookingService := service.NewBookingService(db, eventBus, sheetsWorker, cfg.Bot.MaxBookingDays, cfg.Bot.MinBookingAdvance, &logger)
 	userService := service.NewUserService(db, cfg, &logger)
 	itemService := service.NewItemService(db, &logger)
 	metrics := bot.NewMetrics()

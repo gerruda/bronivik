@@ -119,7 +119,7 @@ func (b *Bot) handleMainMenu(ctx context.Context, update tgbotapi.Update) {
 
 	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(rows...)
 
-	b.setUserState(ctx, userID, StateMainMenu, nil)
+	b.setUserState(ctx, userID, models.StateMainMenu, nil)
 	b.tgService.Send(msg)
 }
 
@@ -187,7 +187,7 @@ func (b *Bot) handlePersonalData(ctx context.Context, update tgbotapi.Update, it
 
 	state.TempData["item_id"] = itemID
 	state.TempData["date"] = date
-	b.setUserState(ctx, update.Message.From.ID, StatePersonalData, state.TempData)
+	b.setUserState(ctx, update.Message.From.ID, models.StatePersonalData, state.TempData)
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 		`Для оформления заявки необходимо ваше согласие на обработку персональных данных.
@@ -231,7 +231,7 @@ func (b *Bot) handleNameRequest(ctx context.Context, update tgbotapi.Update) {
 
 	state := b.getUserState(ctx, update.Message.From.ID)
 
-	b.setUserState(ctx, update.Message.From.ID, StateEnterName, state.TempData)
+	b.setUserState(ctx, update.Message.From.ID, models.StateEnterName, state.TempData)
 
 	b.debugState(ctx, update.Message.From.ID, "handleNameRequest END")
 	b.tgService.Send(msg)
@@ -260,7 +260,7 @@ func (b *Bot) handlePhoneRequest(ctx context.Context, update tgbotapi.Update) {
 
 	state := b.getUserState(ctx, update.Message.From.ID)
 
-	b.setUserState(ctx, update.Message.From.ID, StatePhoneNumber, state.TempData)
+	b.setUserState(ctx, update.Message.From.ID, models.StatePhoneNumber, state.TempData)
 	b.tgService.Send(msg)
 }
 
@@ -404,7 +404,7 @@ func (b *Bot) handleSelectItem(ctx context.Context, update tgbotapi.Update) {
 	b.updateUserActivity(userID)
 
 	// Сохраняем состояние
-	b.setUserState(ctx, userID, StateSelectItem, map[string]interface{}{
+	b.setUserState(ctx, userID, models.StateSelectItem, map[string]interface{}{
 		"page": 0,
 	})
 
@@ -510,7 +510,7 @@ func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Upda
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message.String())
 	msg.ReplyMarkup = &markup
-	msg.ParseMode = "Markdown"
+	msg.ParseMode = models.ParseModeMarkdown
 	b.tgService.Send(msg)
 }
 
@@ -558,7 +558,7 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 		selectedItem.TotalQuantity)
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
-	msg.ParseMode = "Markdown"
+	msg.ParseMode = models.ParseModeMarkdown
 	b.tgService.Send(msg)
 }
 
@@ -723,7 +723,7 @@ func (b *Bot) handlePhoneReceived(ctx context.Context, update tgbotapi.Update, p
 
 	state.TempData["phone"] = normalizedPhone
 	state.TempData["item_id"] = selectedItem.ID // Сохраняем ID элемента для подтверждения
-	b.setUserState(ctx, update.Message.From.ID, StateConfirmation, state.TempData)
+	b.setUserState(ctx, update.Message.From.ID, models.StateConfirmation, state.TempData)
 
 	b.debugState(ctx, update.Message.From.ID, "handlePhoneReceived END")
 

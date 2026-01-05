@@ -14,34 +14,48 @@ import (
 )
 
 type BookingService struct {
-	repo           domain.Repository
-	eventBus       domain.EventPublisher
-	sheetsWorker   domain.SyncWorker
-	maxBookingDays int
-	logger         *zerolog.Logger
+	repo              domain.Repository
+	eventBus          domain.EventPublisher
+	sheetsWorker      domain.SyncWorker
+	maxBookingDays    int
+	minBookingAdvance int // in hours
+	logger            *zerolog.Logger
 }
 
-func NewBookingService(repo domain.Repository, eventBus domain.EventPublisher, sheetsWorker domain.SyncWorker, maxBookingDays int, logger *zerolog.Logger) *BookingService {
+func NewBookingService(repo domain.Repository, eventBus domain.EventPublisher, sheetsWorker domain.SyncWorker, maxBookingDays int, minBookingAdvance int, logger *zerolog.Logger) *BookingService {
 	if maxBookingDays <= 0 {
 		maxBookingDays = 365
 	}
 	return &BookingService{
-		repo:           repo,
-		eventBus:       eventBus,
-		sheetsWorker:   sheetsWorker,
-		maxBookingDays: maxBookingDays,
-		logger:         logger,
+		repo:              repo,
+		eventBus:          eventBus,
+		sheetsWorker:      sheetsWorker,
+		maxBookingDays:    maxBookingDays,
+		minBookingAdvance: minBookingAdvance,
+		logger:            logger,
 	}
 }
 
 func (s *BookingService) ValidateBookingDate(date time.Time) error {
-	// Проверяем, что дата не в прошлом
-	if date.Before(time.Now().AddDate(0, 0, -1)) {
-		return database.ErrPastDate
+	now := time.Now()
+
+	// Проверяем минимальное время до бронирования
+	if s.minBookingAdvance > 0 {
+		minDate := now.Add(time.Duration(s.minBookingAdvance) * time.Hour)
+		// Если бронирование на целый день, проверяем начало этого дня
+		bookingStart := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+		if bookingStart.Before(minDate) {
+			return database.ErrPastDate // Or a more specific error if needed
+		}
+	} else {
+		// Проверяем, что дата не в прошлом (минимум сегодня)
+		if date.Before(now.Truncate(24 * time.Hour)) {
+			return database.ErrPastDate
+		}
 	}
 
 	// Проверяем максимальную дату
-	maxDate := time.Now().AddDate(0, 0, s.maxBookingDays)
+	maxDate := now.AddDate(0, 0, s.maxBookingDays)
 	if date.After(maxDate) {
 		return database.ErrDateTooFar
 	}
