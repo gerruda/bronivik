@@ -26,15 +26,21 @@ type Config struct {
 }
 
 type APIConfig struct {
-	Enabled   bool              `yaml:"enabled"`
+	Enabled   bool               `yaml:"enabled"`
+	HTTP      APIHTTPConfig      `yaml:"http"`
 	GRPC      APIGRPCConfig      `yaml:"grpc"`
 	Auth      APIAuthConfig      `yaml:"auth"`
 	RateLimit APIRateLimitConfig `yaml:"rate_limit"`
 }
 
+type APIHTTPConfig struct {
+	Enabled bool `yaml:"enabled"`
+	Port    int  `yaml:"port"`
+}
+
 type APIGRPCConfig struct {
-	Port       int  `yaml:"port"`
-	Reflection bool `yaml:"reflection"`
+	Port       int          `yaml:"port"`
+	Reflection bool         `yaml:"reflection"`
 	TLS        APITLSConfig `yaml:"tls"`
 }
 
@@ -47,10 +53,10 @@ type APITLSConfig struct {
 }
 
 type APIAuthConfig struct {
-	Enabled      bool            `yaml:"enabled"`
-	HeaderAPIKey string          `yaml:"header_api_key"`
-	HeaderExtra  string          `yaml:"header_extra"`
-	APIKeys      []APIClientKey  `yaml:"api_keys"`
+	Enabled      bool           `yaml:"enabled"`
+	HeaderAPIKey string         `yaml:"header_api_key"`
+	HeaderExtra  string         `yaml:"header_extra"`
+	APIKeys      []APIClientKey `yaml:"api_keys"`
 }
 
 type APIClientKey struct {
@@ -160,9 +166,15 @@ func (c *Config) applyDefaults() {
 	if c.API.GRPC.Port == 0 {
 		c.API.GRPC.Port = 8081
 	}
+	if c.API.HTTP.Port == 0 {
+		c.API.HTTP.Port = 8080
+	}
 	// auth enabled by default when API is enabled
 	if !c.API.Auth.Enabled {
 		c.API.Auth.Enabled = true
+	}
+	if !c.API.HTTP.Enabled && c.API.Enabled {
+		c.API.HTTP.Enabled = true
 	}
 	if c.API.Auth.HeaderAPIKey == "" {
 		c.API.Auth.HeaderAPIKey = "x-api-key"

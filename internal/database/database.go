@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"bronivik/internal/models"
@@ -119,6 +120,17 @@ func (db *DB) SetItems(items []models.Item) {
 	}
 }
 
+func (db *DB) itemByNameFromCache(name string) (*models.Item, bool) {
+	lookup := strings.ToLower(strings.TrimSpace(name))
+	for _, it := range db.items {
+		if strings.ToLower(strings.TrimSpace(it.Name)) == lookup {
+			itemCopy := it
+			return &itemCopy, true
+		}
+	}
+	return nil, false
+}
+
 // CreateItem вставляет новый item. Если SortOrder не задан, помещает в конец.
 func (db *DB) CreateItem(ctx context.Context, item *models.Item) error {
 	if item == nil {
@@ -154,7 +166,42 @@ func (db *DB) CreateItem(ctx context.Context, item *models.Item) error {
 func (db *DB) GetItemByName(ctx context.Context, name string) (*models.Item, error) {
 	row := db.QueryRowContext(ctx, `SELECT id, name, description, total_quantity, sort_order, is_active, created_at, updated_at
 		FROM items WHERE name = ? LIMIT 1`, name)
-	return scanItem(row)
+	item, err := scanItem(row)
+	if err == nil {
+		return item, nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	if cached, ok := db.itemByNameFromCache(name); ok {
+		return cached, nil
+	}
+
+	return nil, sql.ErrNoRows
+}
+
+// GetItemAvailabilityByName returns availability info for the item on a given date.
+func (db *DB) GetItemAvailabilityByName(ctx context.Context, itemName string, date time.Time) (*models.AvailabilityInfo, error) {
+	item, err := db.GetItemByName(ctx, itemName)
+	if err != nil {
+		return nil, err
+	}
+
+	booked, err := db.GetBookedCount(ctx, item.ID, date)
+	if err != nil {
+		return nil, err
+	}
+
+	info := models.AvailabilityInfo{
+		ItemName:    item.Name,
+		Date:        date,
+		BookedCount: int64(booked),
+		Total:       item.TotalQuantity,
+		Available:   int64(booked) < item.TotalQuantity,
+	}
+
+	return &info, nil
 }
 
 // GetActiveItems возвращает активные items, отсортированные по sort_order.

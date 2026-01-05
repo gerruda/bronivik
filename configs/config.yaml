@@ -65,6 +65,9 @@ google:
 
 api:
   enabled: true
+  http:
+    enabled: true
+    port: 8080
   grpc:
     port: 8081
     reflection: true

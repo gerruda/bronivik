@@ -63,12 +63,23 @@ func main() {
 		log.Fatalf("Failed to create gRPC API server: %v", err)
 	}
 
+	httpServer := api.NewHTTPServer(cfg.API, db)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
 		if err := grpcServer.Serve(); err != nil {
 			log.Printf("gRPC server stopped: %v", err)
+		}
+	}()
+
+	go func() {
+		if !cfg.API.HTTP.Enabled {
+			return
+		}
+		if err := httpServer.Start(); err != nil {
+			log.Printf("HTTP server stopped: %v", err)
 		}
 	}()
 
@@ -80,5 +91,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	grpcServer.Shutdown(shutdownCtx)
+	_ = httpServer.Shutdown(shutdownCtx)
 	log.Println("API server stopped")
 }

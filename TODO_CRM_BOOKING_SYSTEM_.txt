@@ -13,29 +13,29 @@
 ## 1. 1 API Endpoint для проверки доступности оборудования
 
 ### 1.1.1 Создание HTTP-сервера
-- [ ] **Создать файл `internal/api/server.go`**
-  - [ ] Инициализация HTTP-сервера (gin/chi/стандартный net/http)
-  - [ ] Настройка middleware для логирования
+- [x] **Создать файл `internal/api/server.go`**
+  - [x] Инициализация HTTP-сервера (gin/chi/стандартный net/http)
+  - [x] Настройка middleware для логирования
   - [ ] Настройка CORS (если нужно)
-  - [ ] Graceful shutdown
+  - [x] Graceful shutdown
 
-- [ ] **Создать файл `internal/api/handlers. go`**
-  - [ ] Handler `GET /api/v1/availability/{item_name}? date={date}`
+- [x] **Создать файл `internal/api/handlers. go`**
+  - [x] Handler `GET /api/v1/availability/{item_name}? date={date}`
     - Проверка доступности аппарата по имени и дате
     - Возвращает:  `{"available": true/false, "booked_count": N, "total":  M}`
-  - [ ] Handler `GET /api/v1/availability/bulk`
+  - [x] Handler `GET /api/v1/availability/bulk`
     - Массовая проверка доступности
     - Body: `{"items": ["item1", "item2"], "dates": ["2025-12-22", "2025-12-23"]}`
-  - [ ] Handler `GET /api/v1/items`
+  - [x] Handler `GET /api/v1/items`
     - Список всех аппаратов с их total_quantity
 
 ### 1.1.2 Авторизация API
-- [ ] **Создать файл `internal/api/auth.go`**
-  - [ ] Middleware для проверки API-ключа в заголовке `X-API-Key`
-  - [ ] Хранение API-ключей в конфиге или базе
-  - [ ] Rate limiting для защиты от DDoS
+- [x] **Создать файл `internal/api/auth.go`**
+  - [x] Middleware для проверки API-ключа в заголовке `X-API-Key`
+  - [x] Хранение API-ключей в конфиге или базе
+  - [x] Rate limiting для защиты от DDoS
 
-- [ ] **Обновить `configs/config.yaml`**
+- [x] **Обновить `configs/config.yaml`**
   ```yaml
   api: 
     enabled: true
@@ -47,7 +47,7 @@
   ```
 
 ### 1.1.3 Модификация database
-- [ ] **Добавить метод в `internal/database/database.go`**
+- [x] **Добавить метод в `internal/database/database.go`**
   ```go
   // GetItemAvailabilityByName проверяет доступность по имени аппарата
   func (db *DB) GetItemAvailabilityByName(ctx context.Context, itemName string, date time.Time) (*AvailabilityInfo, error)
@@ -57,7 +57,7 @@
   ```
 
 ### 1.1.4 Интеграция в main.go
-- [ ] **Запуск API-сервера параллельно с ботом**
+- [x] **Запуск API-сервера параллельно с ботом**
   ```go
   // В main.go
   if cfg.API.Enabled {
