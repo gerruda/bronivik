@@ -1202,10 +1202,10 @@ bronivik_crm/
   - create → confirm → complete
   - create → reject
   - create → cancel
-- [ ] **Конкурентный доступ**
-  - Одновременное бронирование одного слота
-- [ ] **Failover Redis**
-  - Переключение на in-memory при недоступности Redis
+- [x] **Конкурентный доступ**
+  - Одновременное бронирование одного слота (реализовано в database/concurrency_test.go)
+- [x] **Failover Redis**
+  - Переключение на in-memory при недоступности Redis (реализовано в repository/failover.go)
 
 ### 5.5.3 Инфраструктура тестирования
 - [x] **Добавить в Makefile**
@@ -1274,10 +1274,11 @@ bronivik_crm/
   - `sheets_sync_success_total` / `sheets_sync_failure_total`
 
 ### 5.8.3 Алертинг
-- [ ] **Создать правила алертинга**
+- [x] **Создать правила алертинга**
   - База данных недоступна > 1 минуты
   - Google Sheets sync failures > 5 подряд
   - Rate limit превышен > 100 раз/минуту
+  - (Реализовано в monitoring/alerts.yml)
 
 ---
 
@@ -1329,15 +1330,15 @@ bronivik_crm/
   - internal/api/*.go
 
 ### 5.10.2 README
-- [ ] **Добавить в README.md**
+- [x] **Добавить в README.md**
   - Архитектурная диаграмма
   - API документация (endpoints, примеры)
   - Deployment guide
 - [ ] **Создать bronivik_crm/README.md**
 
 ### 5.10.3 API документация
-- [ ] **Добавить OpenAPI/Swagger spec**
-  - Для HTTP endpoints (/api/v1/*)
+- [x] **Добавить OpenAPI/Swagger spec**
+  - Для HTTP endpoints (/api/v1/*) (Реализовано в api/openapi.yaml)
 - [ ] **Обновить proto файлы с комментариями**
   - Описание методов и полей
 

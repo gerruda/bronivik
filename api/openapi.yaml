@@ -1,0 +1,89 @@
+openapi: 3.0.0
+info:
+  title: Bronivik JR API
+  description: API for checking equipment availability and managing items.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8081
+    description: Local development server
+paths:
+  /api/v1/availability/{item_name}:
+    get:
+      summary: Check item availability
+      parameters:
+        - name: item_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Availability info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  booked_count:
+                    type: integer
+                  total:
+                    type: integer
+        '401':
+          description: Unauthorized
+  /api/v1/availability/bulk:
+    get:
+      summary: Bulk check availability
+      responses:
+        '200':
+          description: Bulk availability info
+        '401':
+          description: Unauthorized
+  /api/v1/items:
+    get:
+      summary: List all active items
+      responses:
+        '200':
+          description: List of items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    total_quantity:
+                      type: integer
+        '401':
+          description: Unauthorized
+  /healthz:
+    get:
+      summary: Liveness probe
+      responses:
+        '200':
+          description: OK
+  /readyz:
+    get:
+      summary: Readiness probe
+      responses:
+        '200':
+          description: OK
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+security:
+  - ApiKeyAuth: []

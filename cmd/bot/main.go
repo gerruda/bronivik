@@ -139,7 +139,9 @@ func main() {
 	}
 
 	// Инициализация сервиса состояний
-	stateRepo := repository.NewRedisStateRepository(redisClient, time.Duration(models.DefaultRedisTTL)*time.Second)
+	primaryRepo := repository.NewRedisStateRepository(redisClient, time.Duration(models.DefaultRedisTTL)*time.Second)
+	fallbackRepo := repository.NewMemoryStateRepository(time.Duration(models.DefaultRedisTTL) * time.Second)
+	stateRepo := repository.NewFailoverStateRepository(primaryRepo, fallbackRepo, &logger)
 	stateService := service.NewStateService(stateRepo, &logger)
 
 	// Запускаем воркер синхронизации Google Sheets

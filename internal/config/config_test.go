@@ -9,11 +9,11 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-// Create a temporary config file
-tmpDir := t.TempDir()
-configPath := filepath.Join(tmpDir, "config.yaml")
+	// Create a temporary config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
 
-yamlContent := `
+	yamlContent := `
 telegram:
   bot_token: "test_token"
 database:
@@ -23,75 +23,75 @@ items:
     name: "Item 1"
     total_quantity: 1
 `
-if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
-t.Fatalf("failed to write temp config: %v", err)
-}
+	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write temp config: %v", err)
+	}
 
-// Mock .env file
-if err := os.WriteFile(".env", []byte(""), 0644); err != nil {
-t.Fatalf("failed to write .env: %v", err)
-}
-defer os.Remove(".env")
+	// Mock .env file
+	if err := os.WriteFile(".env", []byte(""), 0644); err != nil {
+		t.Fatalf("failed to write .env: %v", err)
+	}
+	defer os.Remove(".env")
 
-cfg, err := Load(configPath)
-if err != nil {
-t.Fatalf("failed to load config: %v", err)
-}
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
 
-if cfg.Telegram.BotToken != "test_token" {
-t.Errorf("expected bot_token test_token, got %s", cfg.Telegram.BotToken)
-}
+	if cfg.Telegram.BotToken != "test_token" {
+		t.Errorf("expected bot_token test_token, got %s", cfg.Telegram.BotToken)
+	}
 
-if len(cfg.Items) != 1 || cfg.Items[0].ID != 1 {
-t.Errorf("expected 1 item with ID 1")
-}
+	if len(cfg.Items) != 1 || cfg.Items[0].ID != 1 {
+		t.Errorf("expected 1 item with ID 1")
+	}
 }
 
 func TestValidateConfig(t *testing.T) {
-tests := []struct {
-name    string
-cfg     Config
-wantErr bool
-}{
-{
-name: "valid config",
-cfg: Config{
-Telegram: TelegramConfig{BotToken: "token"},
-Database: DatabaseConfig{Path: "path"},
-Items:    []models.Item{{ID: 1, Name: "Item 1"}},
-},
-wantErr: false,
-},
-{
-name: "missing token",
-cfg: Config{
-Telegram: TelegramConfig{BotToken: ""},
-Database: DatabaseConfig{Path: "path"},
-},
-wantErr: true,
-},
-{
-name: "duplicate item id",
-cfg: Config{
-Telegram: TelegramConfig{BotToken: "token"},
-Database: DatabaseConfig{Path: "path"},
-Items: []models.Item{
-{ID: 1, Name: "Item 1"},
-{ID: 1, Name: "Item 2"},
-},
-},
-wantErr: true,
-},
-}
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+	}{
+		{
+			name: "valid config",
+			cfg: Config{
+				Telegram: TelegramConfig{BotToken: "token"},
+				Database: DatabaseConfig{Path: "path"},
+				Items:    []models.Item{{ID: 1, Name: "Item 1"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing token",
+			cfg: Config{
+				Telegram: TelegramConfig{BotToken: ""},
+				Database: DatabaseConfig{Path: "path"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "duplicate item id",
+			cfg: Config{
+				Telegram: TelegramConfig{BotToken: "token"},
+				Database: DatabaseConfig{Path: "path"},
+				Items: []models.Item{
+					{ID: 1, Name: "Item 1"},
+					{ID: 1, Name: "Item 2"},
+				},
+			},
+			wantErr: true,
+		},
+	}
 
-for _, tt := range tests {
-t.Run(tt.name, func(t *testing.T) {
-err := tt.cfg.Validate()
-if (err != nil) != tt.wantErr {
-t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
-}
-})
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestApplyDefaults(t *testing.T) {

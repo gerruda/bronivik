@@ -108,30 +108,64 @@ The bot provides a REST API for integration with other services (e.g., `bronivik
 
 ### Endpoints
 
-- `GET /api/v1/availability/{item_name}?date=YYYY-MM-DD` - Check availability for a specific item.
-- `GET /api/v1/availability/bulk` - Bulk check availability.
-- `GET /api/v1/items` - List all active items.
+- `GET /api/v1/availability/{item_name}?date=YYYY-MM-DD`
+  - Returns availability status for a specific item on a given date.
+  - Response: `{"available": true, "booked_count": 1, "total": 2}`
+- `GET /api/v1/availability/bulk`
+  - Bulk check availability for multiple items and dates.
+- `GET /api/v1/items`
+  - List all active items with their total quantities.
 - `GET /healthz` - Liveness probe.
-- `GET /readyz` - Readiness probe (checks DB and Redis).
+- `GET /readyz` - Readiness probe (checks DB and Redis connectivity).
 
 ### Authentication
 
-All API requests must include the `x-api-key` header.
+All API requests must include the `X-API-Key` header.
 
 ```bash
-curl -H "x-api-key: your-secret-key" http://localhost:8080/api/v1/items
+curl -H "X-API-Key: your-secret-key" http://localhost:8081/api/v1/items
 ```
 
 ## Architecture
 
+```mermaid
+graph TD
+    User((User)) <--> Telegram[Telegram Bot API]
+    Manager((Manager)) <--> Telegram
+    
+    subgraph "Bronivik JR Service"
+        Bot[Bot Handler] <--> Telegram
+        API[REST API] <--> CRM[Bronivik CRM]
+        
+        Bot --> Service[Service Layer]
+        API --> Service
+        
+        Service --> DB[(SQLite DB)]
+        Service --> Redis[(Redis Cache/State)]
+        Service --> EventBus[Event Bus]
+        
+        EventBus --> Worker[Google Sheets Worker]
+        Worker --> Sheets[Google Sheets API]
+        
+        Service --> Backup[Backup Service]
+        Backup --> DB
+    end
+    
+    subgraph "Monitoring"
+        Prometheus[Prometheus] --> API
+        Alertmanager[Alertmanager] --> Prometheus
+    end
+```
+
 The system consists of:
 
-- **Telegram Bot**: Main interface for users and managers.
-- **REST API**: Integration point for external services.
-- **SQLite**: Primary persistent storage for bookings and items.
-- **Redis**: State management and rate limiting.
-- **Google Sheets Worker**: Asynchronous synchronization of bookings to Google Sheets.
-- **Backup Service**: Automatic daily backups of the SQLite database.
+- **Telegram Bot**: Main interface for users and managers, built with `telegram-bot-api/v5`.
+- **REST API**: Integration point for external services (like `bronivik_crm`), providing availability checks.
+- **SQLite**: Primary persistent storage for bookings, items, and users. Uses WAL mode for concurrency.
+- **Redis**: State management for user flows and rate limiting. Includes an in-memory failover.
+- **Google Sheets Worker**: Asynchronous synchronization of bookings to Google Sheets using a task queue.
+- **Backup Service**: Automatic daily backups of the SQLite database using `VACUUM INTO`.
+- **Event Bus**: Decouples business logic from side effects like synchronization and notifications.
 
 ## Development
 
@@ -146,15 +180,34 @@ make test-coverage
 make lint
 ```
 
-## Deployment
+## Deployment Guide
 
-1. Configure `.env` file with your tokens and credentials.
-2. Ensure `credentials.json` for Google API is present.
-3. Run using Docker Compose:
+### 1. Prerequisites
+
+- Docker and Docker Compose
+- Google Cloud Service Account JSON key
+- Telegram Bot Token (from @BotFather)
+
+### 2. Configuration
+
+1. Copy `configs/config.yaml` and update the values.
+2. Set up environment variables in a `.env` file:
+
+   ```bash
+   BOT_TOKEN=your_token
+   GOOGLE_CREDENTIALS_FILE=/app/credentials.json
+   API_KEY=your_api_key
+   ```
+
+### 3. Running with Docker
 
 ```bash
 docker-compose up -d
 ```
+
+### 4. Monitoring
+
+Access metrics at `http://localhost:8081/metrics`. Alerting rules are provided in `monitoring/alerts.yml`.
 
 ## License
 

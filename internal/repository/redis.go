@@ -8,6 +8,7 @@ import (
 
 	"bronivik/internal/config"
 	"bronivik/internal/models"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -38,6 +39,9 @@ func NewRedisStateRepository(client *redis.Client, ttl time.Duration) *RedisStat
 }
 
 func (r *RedisStateRepository) GetState(ctx context.Context, userID int64) (*models.UserState, error) {
+	if r.client == nil {
+		return nil, fmt.Errorf("redis client is nil")
+	}
 	key := fmt.Sprintf("user_state:%d", userID)
 	val, err := r.client.Get(ctx, key).Result()
 	if err == redis.Nil {
@@ -56,6 +60,9 @@ func (r *RedisStateRepository) GetState(ctx context.Context, userID int64) (*mod
 }
 
 func (r *RedisStateRepository) SetState(ctx context.Context, state *models.UserState) error {
+	if r.client == nil {
+		return fmt.Errorf("redis client is nil")
+	}
 	key := fmt.Sprintf("user_state:%d", state.UserID)
 	data, err := json.Marshal(state)
 	if err != nil {
@@ -70,6 +77,9 @@ func (r *RedisStateRepository) SetState(ctx context.Context, state *models.UserS
 }
 
 func (r *RedisStateRepository) ClearState(ctx context.Context, userID int64) error {
+	if r.client == nil {
+		return fmt.Errorf("redis client is nil")
+	}
 	key := fmt.Sprintf("user_state:%d", userID)
 	if err := r.client.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("failed to delete state from redis: %w", err)
@@ -78,6 +88,9 @@ func (r *RedisStateRepository) ClearState(ctx context.Context, userID int64) err
 }
 
 func (r *RedisStateRepository) CheckRateLimit(ctx context.Context, userID int64, limit int, window time.Duration) (bool, error) {
+	if r.client == nil {
+		return false, fmt.Errorf("redis client is nil")
+	}
 	key := fmt.Sprintf("rate_limit:%d", userID)
 	count, err := r.client.Incr(ctx, key).Result()
 	if err != nil {
