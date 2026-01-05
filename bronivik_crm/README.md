@@ -31,6 +31,8 @@ The bot is built as a standalone Go service that communicates with the main Bron
 
 Configuration is managed via a YAML file. By default, the bot looks for `configs/config.yaml`, but you can override this using the `CRM_CONFIG_PATH` environment variable.
 
+The config file supports `${ENV_VAR}` placeholders (values are expanded from the process environment at startup).
+
 ### Key Configuration Sections
 
 - **`telegram`**: Bot token and debug settings.
@@ -46,15 +48,16 @@ Example configuration:
 telegram:
   bot_token: "YOUR_BOT_TOKEN"
 api:
-  base_url: "http://bronivik-jr:8080"
-  api_key: "your-api-key"
+  base_url: "http://localhost:8080"
+  api_key: "${CRM_API_KEY}"
+  api_extra: "${CRM_API_EXTRA}"
 ```
 
 ## How to Run
 
 ### Local Development
 
-1. Ensure you have Go 1.21+ installed.
+1. Ensure you have Go 1.24+ installed.
 2. Copy `configs/config.yaml` and fill in your settings.
 3. Run the bot:
 
@@ -94,3 +97,12 @@ Bronivik CRM integrates with Bronivik Jr via its REST API:
 - `POST /api/v1/availability/bulk`: For bulk availability checks.
 
 Authentication is handled via the `x-api-key` header.
+
+If Bronivik Jr API auth is enabled, the CRM bot must send two headers:
+
+- `x-api-key`
+- `x-api-extra`
+
+In docker compose, the default integration URL is:
+
+- `http://grpc-api:8080`

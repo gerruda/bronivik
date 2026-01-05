@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   telegram-bot:
     build:
@@ -31,7 +29,9 @@ services:
     restart: "on-failure"
     command: ["./api"]
     ports:
+      - "8080:8080"
       - "8081:8081"
+      - "9090:9090"
     env_file:
       - .env
     environment:

@@ -1,13 +1,13 @@
-# Bronivik GO - Бронировочный бот
+# Bronivik GO
 
-Управление бронированиями через Telegram с интеграцией Google Sheets, PostgreSQL и Redis.
+Telegram-бот бронирований + API сервис (HTTP + gRPC) с интеграцией Google Sheets, SQLite (WAL) и Redis. В репозитории также есть отдельный бот для CRM-логики (почасовые кабинеты) — `bronivik_crm`.
 
 ## Требования
 
-- Go 1.20+
-- PostgreSQL 12+ / SQLite3
-- Redis 5+
-- Google Cloud Platform аккаунт
+- Go 1.24+ (см. `go.mod` / toolchain)
+- SQLite3 (по умолчанию)
+- Redis 7+ (опционально, но рекомендуется)
+- Google Cloud Service Account (опционально, если включена синхронизация в Sheets)
 
 ## Конфигурация
 
@@ -37,28 +37,63 @@ google:
 
 ## Переменные окружения (`.env`)
 
+Рекомендуемый старт: скопировать шаблон и заполнить.
+
+```bash
+cp .env.example .env
+```
+
 ```bash
 # Обязательные:
 BOT_TOKEN=your_telegram_token
-GOOGLE_CREDENTIALS_FILE=path/to/service-account.json
+
+# Если используете Google Sheets:
+GOOGLE_CREDENTIALS_FILE=/app/certs/credentials.json
+USERS_SPREADSHEET_ID=
+BOOKINGS_SPREADSHEET_ID=
+
+# API auth (bronivik_crm -> bronivik_jr HTTP API)
+CRM_API_KEY=
+CRM_API_EXTRA=
 
 # Опциональные (для PostgreSQL):
-BOT_USER=postgres_user
-BOT_PASSWORD=secure_password
-POSTGRES_DB=bot_db
+BOT_USER=
+BOT_PASSWORD=
+POSTGRES_DB=
 ```
 
 ## Запуск
+
+### Docker Compose (рекомендуется)
+
+1) Подготовьте `.env` и конфиги.
+
+2) Если используете Google Sheets — положите JSON ключ сервисного аккаунта в `./certs/credentials.json` и выставьте `GOOGLE_CREDENTIALS_FILE=/app/certs/credentials.json`.
+
+3) Запуск:
+
+```bash
+docker compose up -d --build
+```
+
+Сервисы:
+
+- `telegram-bot`: основной Telegram бот
+- `grpc-api`: API сервис (HTTP + gRPC)
+- `crm-bot`: CRM Telegram бот (почасовые кабинеты)
+- `redis`: Redis
+
+### Локально (Go)
 
 ```bash
 # Установка зависимостей
 go mod tidy
 
-# Запуск с конфигом по умолчанию
-go run main.go --config=configs/config.yaml
+# Бот
+go run ./cmd/bot --config=configs/config.yaml
 
-# Или с переменными окружения
-export BOT_TOKEN=your_token && go run main.go
+# API (HTTP + gRPC)
+go run ./cmd/api --config=configs/config.yaml
 ```
 
 ## Команды бота
@@ -91,10 +126,12 @@ export BOT_TOKEN=your_token && go run main.go
 4. Бот: Уведомление об успешной брони
 ```
 
-## Мониторинг
+## Мониторинг и health checks
 
-- Prometheus: `http://localhost:9090/metrics`
-- Healthcheck: `http://localhost:8080/health`
+- Метрики Prometheus (API): `http://localhost:9090/metrics`
+- Liveness (API): `http://localhost:8080/healthz`
+- Readiness (API): `http://localhost:8080/readyz`
+- CRM бот health: `http://localhost:8090/healthz` и `http://localhost:8090/readyz`
 
 ## Основные функции
 
@@ -102,7 +139,7 @@ export BOT_TOKEN=your_token && go run main.go
 🚫 Черный список пользователей (configs/config.yaml: `blacklist`)  
 📊 Интеграция с Google Sheets через сервисный аккаунт  
 
-## API Documentation
+## HTTP API (для интеграций)
 
 The bot provides a REST API for integration with other services (e.g., `bronivik_crm`).
 
@@ -115,15 +152,21 @@ The bot provides a REST API for integration with other services (e.g., `bronivik
   - Bulk check availability for multiple items and dates.
 - `GET /api/v1/items`
   - List all active items with their total quantities.
-- `GET /healthz` - Liveness probe.
-- `GET /readyz` - Readiness probe (checks DB and Redis connectivity).
+- `GET /healthz` — liveness probe.
+- `GET /readyz` — readiness probe (DB/Redis/Sheets).
 
 ### Authentication
 
-All API requests must include the `X-API-Key` header.
+Если включён `api.auth.enabled`, то запросы должны содержать ДВА заголовка:
+
+- `X-API-Key`
+- `X-API-Extra`
 
 ```bash
-curl -H "X-API-Key: your-secret-key" http://localhost:8081/api/v1/items
+curl \
+  -H "X-API-Key: $CRM_API_KEY" \
+  -H "X-API-Extra: $CRM_API_EXTRA" \
+  http://localhost:8080/api/v1/items
 ```
 
 ## Architecture
@@ -191,23 +234,24 @@ make lint
 ### 2. Configuration
 
 1. Copy `configs/config.yaml` and update the values.
-2. Set up environment variables in a `.env` file:
+2. Set up environment variables in a `.env` file (see `.env.example`):
 
-   ```bash
-   BOT_TOKEN=your_token
-   GOOGLE_CREDENTIALS_FILE=/app/credentials.json
-   API_KEY=your_api_key
-   ```
+```bash
+BOT_TOKEN=your_token
+GOOGLE_CREDENTIALS_FILE=/app/certs/credentials.json
+CRM_API_KEY=...
+CRM_API_EXTRA=...
+```
 
 ### 3. Running with Docker
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
 ```
 
 ### 4. Monitoring
 
-Access metrics at `http://localhost:8081/metrics`. Alerting rules are provided in `monitoring/alerts.yml`.
+Access metrics at `http://localhost:9090/metrics`. Alerting rules are provided in `monitoring/alerts.yml`.
 
 ## License
 
@@ -215,20 +259,18 @@ Access metrics at `http://localhost:8081/metrics`. Alerting rules are provided i
 
 ---
 
-! Важно: перед деплоем в production:
+Важно: перед деплоем в production:
 
 1. Установите `environment: production`
 2. Отключите `telegram.debug`
 3. Настройте SSL для PostgreSQL
 4. Обновите `managers_contacts`
 
-При разработке использовать команду для запуска инфраструктуры
+При разработке (быстрый цикл):
+
+```bash
 git pull
-docker-compose down
-docker-compose build --no-cache
-docker-compose up
-docker logs -f booking-bot
-
-docker-compose -f ./docker/docker-compose.dev.yml up -d
-
-docker-compose -f ./docker/docker-compose.dev.yml --env-file .env up -d
+docker compose down
+docker compose up -d --build
+docker compose logs -f booking-bot
+```

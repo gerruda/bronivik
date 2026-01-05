@@ -73,6 +73,10 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("read config error")
 	}
+
+	// Support ${ENV_VAR} placeholders in YAML config.
+	data = []byte(os.ExpandEnv(string(data)))
+
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		logger.Fatal().Err(err).Msg("parse config error")
