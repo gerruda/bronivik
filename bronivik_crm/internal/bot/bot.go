@@ -91,9 +91,9 @@ func (b *Bot) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 	case strings.HasPrefix(text, "/book"):
 		b.startBookingFlow(ctx, msg)
 	case strings.HasPrefix(text, "/my_bookings"):
-		b.reply(msg.Chat.ID, "(stub) Ваши бронирования")
+		b.handleMyBookings(ctx, msg)
 	case strings.HasPrefix(text, "/cancel_booking"):
-		b.reply(msg.Chat.ID, "(stub) Отмена бронирования")
+		b.handleCancelBooking(ctx, msg)
 	default:
 		// flow text steps
 		switch st.Step {
@@ -324,6 +324,88 @@ func (b *Bot) handleManagerCommands(msg *tgbotapi.Message) bool {
 		return false
 	}
 	return true
+}
+
+func (b *Bot) handleMyBookings(ctx context.Context, msg *tgbotapi.Message) {
+	if msg == nil || msg.From == nil {
+		return
+	}
+	u, err := b.db.GetOrCreateUserByTelegramID(ctx, msg.From.ID, msg.From.UserName, msg.From.FirstName, msg.From.LastName)
+	if err != nil {
+		b.reply(msg.Chat.ID, "Не удалось загрузить пользователя")
+		return
+	}
+
+	bookings, err := b.db.ListUserBookings(ctx, u.ID, 10, false)
+	if err != nil {
+		b.reply(msg.Chat.ID, "Не удалось получить бронирования")
+		return
+	}
+	if len(bookings) == 0 {
+		b.reply(msg.Chat.ID, "У вас нет активных бронирований")
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Ваши бронирования:\n")
+	for _, bk := range bookings {
+		cabName := fmt.Sprintf("Кабинет #%d", bk.CabinetID)
+		if cab, err := b.db.GetCabinet(ctx, bk.CabinetID); err == nil && cab != nil {
+			cabName = cab.Name
+		}
+		item := bk.ItemName
+		if item == "" {
+			item = "Без аппарата"
+		}
+		line := fmt.Sprintf("#%d %s %s-%s | %s | %s | %s\n",
+			bk.ID,
+			bk.StartTime.Format("02.01"),
+			bk.StartTime.Format("15:04"),
+			bk.EndTime.Format("15:04"),
+			cabName,
+			item,
+			bk.Status,
+		)
+		sb.WriteString(line)
+	}
+	b.reply(msg.Chat.ID, sb.String())
+}
+
+func (b *Bot) handleCancelBooking(ctx context.Context, msg *tgbotapi.Message) {
+	if msg == nil || msg.From == nil {
+		return
+	}
+	parts := strings.Fields(msg.Text)
+	if len(parts) < 2 {
+		b.reply(msg.Chat.ID, "Формат: /cancel_booking <id>")
+		return
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || id <= 0 {
+		b.reply(msg.Chat.ID, "Некорректный id бронирования")
+		return
+	}
+
+	u, err := b.db.GetOrCreateUserByTelegramID(ctx, msg.From.ID, msg.From.UserName, msg.From.FirstName, msg.From.LastName)
+	if err != nil {
+		b.reply(msg.Chat.ID, "Не удалось загрузить пользователя")
+		return
+	}
+
+	switch err := b.db.CancelUserBooking(ctx, id, u.ID); {
+	case err == nil:
+		b.reply(msg.Chat.ID, fmt.Sprintf("Бронирование #%d отменено", id))
+	case errors.Is(err, database.ErrBookingNotFound):
+		b.reply(msg.Chat.ID, "Бронирование не найдено")
+	case errors.Is(err, database.ErrBookingForbidden):
+		b.reply(msg.Chat.ID, "Нельзя отменить чужое бронирование")
+	case errors.Is(err, database.ErrBookingTooLate):
+		b.reply(msg.Chat.ID, "Нельзя отменить уже начавшееся бронирование")
+	case errors.Is(err, database.ErrBookingFinalized):
+		b.reply(msg.Chat.ID, "Бронирование уже завершено или отменено")
+	default:
+		b.reply(msg.Chat.ID, "Не удалось отменить бронирование")
+	}
 }
 
 func (b *Bot) reply(chatID int64, text string) {

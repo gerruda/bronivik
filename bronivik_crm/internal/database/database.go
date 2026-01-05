@@ -17,6 +17,10 @@ import (
 var (
 	ErrSlotNotAvailable = errors.New("slot not available")
 	ErrItemNotAvailable = errors.New("item not available")
+	ErrBookingNotFound  = errors.New("booking not found")
+	ErrBookingForbidden = errors.New("booking not owned by user")
+	ErrBookingTooLate   = errors.New("booking already started")
+	ErrBookingFinalized = errors.New("booking already finalized")
 )
 
 // DB wraps sql.DB for the CRM bot.
@@ -372,6 +376,38 @@ func (db *DB) ListHourlyBookingsByCabinet(ctx context.Context, cabinetID int64, 
 	return res, rows.Err()
 }
 
+// ListUserBookings returns up to limit bookings for a user; includePast controls whether past bookings are returned.
+func (db *DB) ListUserBookings(ctx context.Context, userID int64, limit int, includePast bool) ([]models.HourlyBooking, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	args := []any{userID}
+	query := `SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at
+		FROM hourly_bookings WHERE user_id = ?`
+	if !includePast {
+		query += " AND end_time >= ?"
+		args = append(args, time.Now())
+	}
+	query += " ORDER BY start_time ASC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []models.HourlyBooking
+	for rows.Next() {
+		bk, err := scanHourly(rows)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, *bk)
+	}
+	return res, rows.Err()
+}
+
 // UpdateHourlyBookingStatus updates status/comment and updated_at.
 func (db *DB) UpdateHourlyBookingStatus(ctx context.Context, id int64, status, comment string) error {
 	_, err := db.ExecContext(ctx, `UPDATE hourly_bookings SET status = ?, comment = ?, updated_at = ? WHERE id = ?`, status, comment, time.Now(), id)
@@ -382,6 +418,40 @@ func (db *DB) UpdateHourlyBookingStatus(ctx context.Context, id int64, status, c
 func (db *DB) DeleteHourlyBooking(ctx context.Context, id int64) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM hourly_bookings WHERE id = ?`, id)
 	return err
+}
+
+// CancelUserBooking sets status to cancelled if the booking belongs to the user and not started yet.
+func (db *DB) CancelUserBooking(ctx context.Context, bookingID, userID int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var ownerID int64
+	var status string
+	var start time.Time
+	if err := tx.QueryRowContext(ctx, `SELECT user_id, status, start_time FROM hourly_bookings WHERE id = ?`, bookingID).Scan(&ownerID, &status, &start); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrBookingNotFound
+		}
+		return err
+	}
+	if ownerID != userID {
+		return ErrBookingForbidden
+	}
+	now := time.Now()
+	if !start.After(now) {
+		return ErrBookingTooLate
+	}
+	if status == "cancelled" || status == "rejected" {
+		return ErrBookingFinalized
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE hourly_bookings SET status = 'cancelled', updated_at = ? WHERE id = ?`, now, bookingID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // CheckSlotAvailability verifies if a time slot is free for a cabinet on a date.
