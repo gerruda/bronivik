@@ -227,3 +227,42 @@ func TestGetServiceAccountEmail(t *testing.T) {
 		t.Error("Expected error for non-existent file")
 	}
 }
+
+func TestGetPeriodHeaderFormat(t *testing.T) {
+	s := &SheetsService{}
+	req := s.getPeriodHeaderFormat(123)
+	if req == nil || req.RepeatCell == nil {
+		t.Error("Expected RepeatCell request")
+	}
+	if req.RepeatCell.Range.SheetId != 123 {
+		t.Errorf("Expected sheet ID 123, got %d", req.RepeatCell.Range.SheetId)
+	}
+}
+
+func TestGetDateHeadersFormat(t *testing.T) {
+	s := &SheetsService{}
+	req := s.getDateHeadersFormat(456, 5)
+	if req == nil || req.RepeatCell == nil {
+		t.Error("Expected RepeatCell request")
+	}
+	if req.RepeatCell.Range.SheetId != 456 {
+		t.Errorf("Expected sheet ID 456, got %d", req.RepeatCell.Range.SheetId)
+	}
+	if req.RepeatCell.Range.EndColumnIndex != 5 {
+		t.Errorf("Expected end column 5, got %d", req.RepeatCell.Range.EndColumnIndex)
+	}
+}
+
+func TestGetItemNamesFormat(t *testing.T) {
+	s := &SheetsService{}
+	req := s.getItemNamesFormat(789, 3)
+	if req == nil || req.RepeatCell == nil {
+		t.Error("Expected RepeatCell request")
+	}
+	if req.RepeatCell.Range.SheetId != 789 {
+		t.Errorf("Expected sheet ID 789, got %d", req.RepeatCell.Range.SheetId)
+	}
+	if req.RepeatCell.Range.EndRowIndex != 6 { // 3 + 3
+		t.Errorf("Expected end row 6, got %d", req.RepeatCell.Range.EndRowIndex)
+	}
+}

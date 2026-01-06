@@ -8,14 +8,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
+	availabilityv1 "bronivik/internal/api/gen/availability/v1"
 	"bronivik/internal/config"
 	"bronivik/internal/database"
 	"bronivik/internal/models"
 
 	"github.com/rs/zerolog"
+	"google.golang.org/grpc"
 )
 
 func TestAvailabilitySuccess(t *testing.T) {
@@ -237,5 +240,135 @@ func insertTestBooking(t *testing.T, db *database.DB, item models.Item, date tim
 	)
 	if err != nil {
 		t.Fatalf("insert booking: %v", err)
+	}
+}
+
+func TestAvailabilityService_GetAvailability(t *testing.T) {
+	db := newTestDB(t)
+	item := createTestItem(t, db, "camera", 2)
+	bookingDate := time.Date(2025, 12, 1, 10, 0, 0, 0, time.UTC)
+	insertTestBooking(t, db, item, bookingDate, "confirmed")
+
+	svc := NewAvailabilityService(db)
+
+	t.Run("Success", func(t *testing.T) {
+		req := &availabilityv1.GetAvailabilityRequest{
+			ItemName: item.Name,
+			Date:     bookingDate.Format("2006-01-02"),
+		}
+		resp, err := svc.GetAvailability(context.Background(), req)
+		if err != nil {
+			t.Fatalf("GetAvailability: %v", err)
+		}
+		if !resp.Available {
+			t.Fatalf("expected available=true, got false")
+		}
+		if resp.BookedCount != 1 {
+			t.Fatalf("expected booked_count=1, got %d", resp.BookedCount)
+		}
+	})
+
+	t.Run("ItemNotFound", func(t *testing.T) {
+		req := &availabilityv1.GetAvailabilityRequest{
+			ItemName: "unknown",
+			Date:     bookingDate.Format("2006-01-02"),
+		}
+		_, err := svc.GetAvailability(context.Background(), req)
+		if err == nil {
+			t.Fatalf("expected error for unknown item")
+		}
+	})
+
+	t.Run("InvalidDate", func(t *testing.T) {
+		req := &availabilityv1.GetAvailabilityRequest{
+			ItemName: item.Name,
+			Date:     "invalid-date",
+		}
+		_, err := svc.GetAvailability(context.Background(), req)
+		if err == nil {
+			t.Fatalf("expected error for invalid date")
+		}
+	})
+}
+
+func TestAvailabilityService_GetAvailabilityBulk(t *testing.T) {
+	db := newTestDB(t)
+	item1 := createTestItem(t, db, "camera", 2)
+	item2 := createTestItem(t, db, "lens", 1)
+	bookingDate := time.Date(2025, 12, 1, 10, 0, 0, 0, time.UTC)
+	insertTestBooking(t, db, item1, bookingDate, "confirmed")
+
+	svc := NewAvailabilityService(db)
+
+	req := &availabilityv1.GetAvailabilityBulkRequest{
+		Items: []string{item1.Name, item2.Name, "unknown"},
+		Dates: []string{bookingDate.Format("2006-01-02")},
+	}
+	resp, err := svc.GetAvailabilityBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("GetAvailabilityBulk: %v", err)
+	}
+
+	if len(resp.Results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(resp.Results))
+	}
+}
+
+func TestAvailabilityService_ListItems(t *testing.T) {
+	db := newTestDB(t)
+	createTestItem(t, db, "camera", 2)
+	createTestItem(t, db, "lens", 1)
+
+	svc := NewAvailabilityService(db)
+
+	resp, err := svc.ListItems(context.Background(), &availabilityv1.ListItemsRequest{})
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+
+	if len(resp.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(resp.Items))
+	}
+}
+
+func TestChainUnaryInterceptors(t *testing.T) {
+	callCount := 0
+	var calls []string
+
+	interceptor1 := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		calls = append(calls, "interceptor1")
+		return handler(ctx, req)
+	}
+
+	interceptor2 := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		calls = append(calls, "interceptor2")
+		return handler(ctx, req)
+	}
+
+	handler := func(ctx context.Context, req any) (any, error) {
+		callCount++
+		calls = append(calls, "handler")
+		return "result", nil
+	}
+
+	chained := ChainUnaryInterceptors(interceptor1, interceptor2)
+	info := &grpc.UnaryServerInfo{FullMethod: "test"}
+
+	result, err := chained(context.Background(), "request", info, handler)
+	if err != nil {
+		t.Fatalf("chained interceptor: %v", err)
+	}
+
+	if result != "result" {
+		t.Fatalf("expected 'result', got %v", result)
+	}
+
+	if callCount != 1 {
+		t.Fatalf("expected handler called once, got %d", callCount)
+	}
+
+	expected := []string{"interceptor1", "interceptor2", "handler"}
+	if !reflect.DeepEqual(calls, expected) {
+		t.Fatalf("expected calls %v, got %v", expected, calls)
 	}
 }

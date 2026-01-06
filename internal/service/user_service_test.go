@@ -225,3 +225,109 @@ func TestUserService_SaveUser(t *testing.T) {
 	assert.NoError(t, err)
 	mockRepo.AssertExpectations(t)
 }
+
+func TestUserService_UpdateUserPhone(t *testing.T) {
+	mockRepo := new(MockRepository)
+	logger := zerolog.Nop()
+	cfg := &config.Config{}
+	s := NewUserService(mockRepo, cfg, &logger)
+
+	mockRepo.On("UpdateUserPhone", mock.Anything, int64(123), "+79991234567").Return(nil)
+
+	err := s.UpdateUserPhone(context.Background(), 123, "+79991234567")
+	assert.NoError(t, err)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUserService_UpdateUserActivity(t *testing.T) {
+	mockRepo := new(MockRepository)
+	logger := zerolog.Nop()
+	cfg := &config.Config{}
+	s := NewUserService(mockRepo, cfg, &logger)
+
+	mockRepo.On("UpdateUserActivity", mock.Anything, int64(123)).Return(nil)
+
+	err := s.UpdateUserActivity(context.Background(), 123)
+	assert.NoError(t, err)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUserService_GetAllUsers(t *testing.T) {
+	mockRepo := new(MockRepository)
+	logger := zerolog.Nop()
+	cfg := &config.Config{}
+	s := NewUserService(mockRepo, cfg, &logger)
+
+	users := []models.User{{ID: 1}, {ID: 2}}
+	mockRepo.On("GetAllUsers", mock.Anything).Return(users, nil)
+
+	result, err := s.GetAllUsers(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, users, result)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUserService_GetActiveUsers(t *testing.T) {
+	mockRepo := new(MockRepository)
+	logger := zerolog.Nop()
+	cfg := &config.Config{}
+	s := NewUserService(mockRepo, cfg, &logger)
+
+	users := []models.User{{ID: 1}, {ID: 2}}
+	mockRepo.On("GetActiveUsers", mock.Anything, 7).Return(users, nil)
+
+	result, err := s.GetActiveUsers(context.Background(), 7)
+	assert.NoError(t, err)
+	assert.Equal(t, users, result)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUserService_GetManagers(t *testing.T) {
+	mockRepo := new(MockRepository)
+	logger := zerolog.Nop()
+	cfg := &config.Config{}
+	s := NewUserService(mockRepo, cfg, &logger)
+
+	users := []models.User{{ID: 1, IsManager: true}, {ID: 2, IsManager: true}}
+	mockRepo.On("GetUsersByManagerStatus", mock.Anything, true).Return(users, nil)
+
+	result, err := s.GetManagers(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, users, result)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUserService_GetUserBookings(t *testing.T) {
+	mockRepo := new(MockRepository)
+	logger := zerolog.Nop()
+	cfg := &config.Config{}
+	s := NewUserService(mockRepo, cfg, &logger)
+
+	bookings := []models.Booking{{ID: 1}, {ID: 2}}
+	mockRepo.On("GetUserBookings", mock.Anything, int64(123)).Return(bookings, nil)
+
+	result, err := s.GetUserBookings(context.Background(), 123)
+	assert.NoError(t, err)
+	assert.Equal(t, bookings, result)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUserService_GetUserByID(t *testing.T) {
+	mockRepo := new(MockRepository)
+	logger := zerolog.Nop()
+	cfg := &config.Config{}
+	s := NewUserService(mockRepo, cfg, &logger)
+
+	user := &models.User{ID: 1, FirstName: "Test"}
+	mockRepo.On("GetUserByID", mock.Anything, int64(1)).Return(user, nil)
+	mockRepo.On("GetUserByID", mock.Anything, int64(2)).Return(nil, assert.AnError)
+
+	result, err := s.GetUserByID(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.Equal(t, user, result)
+
+	result, err = s.GetUserByID(context.Background(), 2)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	mockRepo.AssertExpectations(t)
+}

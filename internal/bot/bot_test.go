@@ -175,10 +175,16 @@ func (m *mockStateManager) CheckRateLimit(ctx context.Context, userID int64, lim
 
 type mockUserService struct {
 	domain.UserService
-	users map[int64]*models.User
+	users               map[int64]*models.User
+	saveError           error
+	updateActivityError error
+	updatePhoneError    error
 }
 
 func (m *mockUserService) SaveUser(ctx context.Context, user *models.User) error {
+	if m.saveError != nil {
+		return m.saveError
+	}
 	if m.users == nil {
 		m.users = make(map[int64]*models.User)
 	}
@@ -187,10 +193,16 @@ func (m *mockUserService) SaveUser(ctx context.Context, user *models.User) error
 }
 
 func (m *mockUserService) UpdateUserActivity(ctx context.Context, telegramID int64) error {
+	if m.updateActivityError != nil {
+		return m.updateActivityError
+	}
 	return nil
 }
 
 func (m *mockUserService) UpdateUserPhone(ctx context.Context, telegramID int64, phone string) error {
+	if m.updatePhoneError != nil {
+		return m.updatePhoneError
+	}
 	if u, ok := m.users[telegramID]; ok {
 		u.Phone = phone
 	}
@@ -1708,4 +1720,90 @@ func TestManagerBookingActions(t *testing.T) {
 	}
 	b.handleChangeItem(ctx, callbackUpdate)
 	assert.Equal(t, models.StatusChanged, booking.Status)
+}
+
+func TestPagination(t *testing.T) {
+	b, mocks := setupTestBot()
+	ctx := context.Background()
+
+	// Test renderPaginatedItems
+	params := PaginationParams{
+		Ctx:          ctx,
+		ChatID:       123,
+		MessageID:    0,
+		Page:         0,
+		Title:        "Test Items",
+		ItemPrefix:   "item_",
+		PagePrefix:   "page_",
+		BackCallback: "back",
+		ShowCapacity: true,
+	}
+
+	b.renderPaginatedItems(params)
+	assert.True(t, len(mocks.tg.sentMessages) > 0)
+
+	// Test renderPaginatedBookings
+	bookings := []models.Booking{
+		{ID: 1, UserName: "User 1", ItemName: "Item 1", Date: time.Now(), Status: models.StatusConfirmed},
+		{ID: 2, UserName: "User 2", ItemName: "Item 2", Date: time.Now(), Status: models.StatusPending},
+	}
+
+	params.Title = "Test Bookings"
+	params.ItemPrefix = "booking_"
+	b.renderPaginatedBookings(params, bookings)
+	assert.True(t, len(mocks.tg.sentMessages) > 1)
+}
+
+func TestSyncBookingsToSheets(t *testing.T) {
+	b, mocks := setupTestBot()
+	ctx := context.Background()
+
+	// Mock bookings
+	mocks.booking.bookings[1] = &models.Booking{
+		ID: 1, UserID: 1, ItemID: 1, Date: time.Now(), Status: models.StatusConfirmed,
+		UserName: "User 1", Phone: "123", ItemName: "Item 1",
+	}
+
+	b.SyncBookingsToSheets(ctx)
+	// Should not panic and call sheets service
+}
+
+func TestSyncScheduleToSheets(t *testing.T) {
+	b, mocks := setupTestBot()
+	ctx := context.Background()
+
+	// Mock bookings
+	mocks.booking.bookings[1] = &models.Booking{
+		ID: 1, UserID: 1, ItemID: 1, Date: time.Now(), Status: models.StatusConfirmed,
+		UserName: "User 1", Phone: "123", ItemName: "Item 1",
+	}
+
+	b.SyncScheduleToSheets(ctx)
+	// Should not panic and call sheets service
+}
+
+func TestUserHandlersErrors(t *testing.T) {
+	b, mocks := setupTestBot()
+	ctx := context.Background()
+
+	// Test handleStartWithUserTracking with user service error
+	mocks.user.saveError = errors.New("save user error")
+	update := tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: 123},
+			From: &tgbotapi.User{ID: 123, UserName: "testuser"},
+		},
+	}
+	b.handleStartWithUserTracking(ctx, update)
+	// Should not panic despite error
+
+	// Test updateUserActivity with error
+	mocks.user.updateActivityError = errors.New("update activity error")
+	b.updateUserActivity(123)
+	// Should not panic
+
+	// Test updateUserPhone with error
+	mocks.user.updatePhoneError = errors.New("update phone error")
+	b.updateUserPhone(123, "+1234567890")
+	// Should not panic
 }

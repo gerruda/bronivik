@@ -186,6 +186,59 @@ func TestRetryPolicyNextDelay(t *testing.T) {
 	}
 }
 
+func TestSheetsWorker_EnqueueTask(t *testing.T) {
+	db := newTestDB(t)
+	sheets := &fakeSheets{}
+	worker := NewSheetsWorker(db, sheets, nil, RetryPolicy{}, nil)
+
+	ctx := context.Background()
+	booking := &models.Booking{ID: 1, UserName: "test"}
+
+	t.Run("ValidTask", func(t *testing.T) {
+		err := worker.EnqueueTask(ctx, TaskUpsert, 1, booking, "")
+		if err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+	})
+
+	t.Run("InvalidTaskType", func(t *testing.T) {
+		err := worker.EnqueueTask(ctx, "", 1, booking, "")
+		if err == nil {
+			t.Fatalf("expected error for empty task type")
+		}
+	})
+
+	t.Run("InvalidBookingID", func(t *testing.T) {
+		err := worker.EnqueueTask(ctx, TaskUpsert, 0, nil, "")
+		if err == nil {
+			t.Fatalf("expected error for missing booking id")
+		}
+	})
+}
+
+func TestSheetsWorker_DecodePayload(t *testing.T) {
+	worker := NewSheetsWorker(nil, nil, nil, RetryPolicy{}, nil)
+
+	t.Run("ValidPayload", func(t *testing.T) {
+		payload := `{"booking_id":123,"status":"confirmed"}`
+		decoded, err := worker.decodePayload(payload)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if decoded.BookingID != 123 || decoded.Status != "confirmed" {
+			t.Fatalf("unexpected decoded payload: %+v", decoded)
+		}
+	})
+
+	t.Run("InvalidPayload", func(t *testing.T) {
+		payload := `invalid json`
+		_, err := worker.decodePayload(payload)
+		if err == nil {
+			t.Fatalf("expected error for invalid json")
+		}
+	})
+}
+
 // Helpers
 
 type fakeSheets struct {

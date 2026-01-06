@@ -89,4 +89,21 @@ func TestRedisStateRepository(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, allowed)
 	})
+
+	t.Run("NilClient", func(t *testing.T) {
+		repo := NewRedisStateRepository(nil, time.Hour)
+		_, err := repo.GetState(ctx, 123)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "redis client is nil")
+	})
+
+	t.Run("Ping", func(t *testing.T) {
+		err := Ping(ctx, client)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Close", func(t *testing.T) {
+		err := Close(client)
+		assert.NoError(t, err)
+	})
 }
