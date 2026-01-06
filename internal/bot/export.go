@@ -32,132 +32,45 @@ func (b *Bot) exportToExcel(ctx context.Context, startDate, endDate time.Time) (
 
 	// Создаем новый Excel файл
 	f := excelize.NewFile()
+	defer f.Close()
 
 	// Создаем лист с данными
-	index, err := f.NewSheet("Бронирования")
+	sheetName := "Бронирования"
+	index, err := f.NewSheet(sheetName)
 	if err != nil {
 		return "", fmt.Errorf("error creating sheet: %v", err)
 	}
 	f.SetActiveSheet(index)
 
 	// Устанавливаем заголовок периода
-	_ = f.SetCellValue("Бронирования", "A1", fmt.Sprintf("Период: %s - %s",
+	_ = f.SetCellValue(sheetName, "A1", fmt.Sprintf("Период: %s - %s",
 		startDate.Format("02.01.2006"), endDate.Format("02.01.2006")))
 
-	// Заголовки - даты (начинаем с строки 2)
-	col := 2
-	currentDate := startDate
-	dateHeaders := make(map[string]int)
+	// Заголовки - даты
+	dateHeaders := b.writeDateHeaders(f, sheetName, startDate, endDate)
 
-	for !currentDate.After(endDate) {
-		cell, _ := excelize.CoordinatesToCellName(col, 2)
-		dateStr := currentDate.Format("02.01")
-		_ = f.SetCellValue("Бронирования", cell, dateStr)
-		dateHeaders[currentDate.Format("2006-01-02")] = col
-
-		// Форматируем заголовки дат
-		style, _ := f.NewStyle(&excelize.Style{
-			Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DDEBF7"}, Pattern: 1},
-			Font:      &excelize.Font{Bold: true},
-			Alignment: &excelize.Alignment{Horizontal: "center"},
-		})
-		_ = f.SetCellStyle("Бронирования", cell, cell, style)
-
-		col++
-		currentDate = currentDate.AddDate(0, 0, 1)
-	}
-
-	// Названия аппаратов в первом столбце
-	row := 3
-	for _, item := range items {
-		cell, _ := excelize.CoordinatesToCellName(1, row)
-		_ = f.SetCellValue("Бронирования", cell, fmt.Sprintf("%s (%d)", item.Name, item.TotalQuantity))
-
-		style, _ := f.NewStyle(&excelize.Style{
-			Fill: excelize.Fill{Type: "pattern", Color: []string{"#E2EFDA"}, Pattern: 1},
-			Font: &excelize.Font{Bold: true},
-		})
-		_ = f.SetCellStyle("Бронирования", cell, cell, style)
-
-		row++
-	}
+	// Названия аппаратов
+	b.writeItemHeaders(f, sheetName, items)
 
 	// Заполняем данные по бронированиям
-	for dateKey, bookings := range dailyBookings {
-		col, exists := dateHeaders[dateKey]
-		if !exists {
-			continue
-		}
-
-		// Группируем бронирования по аппаратам
-		bookingsByItem := make(map[int64][]*models.Booking)
-		for _, booking := range bookings {
-			bookingsByItem[booking.ItemID] = append(bookingsByItem[booking.ItemID], booking)
-		}
-
-		// Заполняем данные для каждого аппарата
-		row := 3
-		for _, item := range items {
-			cell, _ := excelize.CoordinatesToCellName(col, row)
-			itemBookings := bookingsByItem[item.ID]
-
-			// Получаем количество занятых аппаратов (только активные заявки)
-			bookedCount, err := b.bookingService.GetBookedCount(ctx, item.ID, parseDate(dateKey))
-			if err != nil {
-				b.logger.Error().Err(err).Int64("item_id", item.ID).Str("date", dateKey).Msg("Error getting booked count")
-				bookedCount = 0
-			}
-
-			if len(itemBookings) > 0 {
-				var cellValue string
-				for _, booking := range itemBookings {
-					status := "❓"
-					switch booking.Status {
-					case models.StatusConfirmed, models.StatusCompleted:
-						status = statusSuccess
-					case models.StatusPending, models.StatusChanged:
-						status = statusPending
-					case models.StatusCanceled:
-						status = statusError
-					}
-					cellValue += fmt.Sprintf("%s %s (%s)\n", status, booking.UserName, booking.Phone)
-					if booking.Comment != "" {
-						cellValue += fmt.Sprintf("   💬 %s\n", booking.Comment)
-					}
-				}
-				cellValue += fmt.Sprintf("\nЗанято: %d/%d", bookedCount, item.TotalQuantity)
-				_ = f.SetCellValue("Бронирования", cell, cellValue)
-			} else {
-				cellValue := fmt.Sprintf("Свободно\n\nДоступно: %d/%d", item.TotalQuantity, item.TotalQuantity)
-				_ = f.SetCellValue("Бронирования", cell, cellValue)
-			}
-
-			// Определяем цвет заливки
-			styleID, err := b.getCellStyle(f, itemBookings, bookedCount, int(item.TotalQuantity))
-			if err == nil {
-				_ = f.SetCellStyle("Бронирования", cell, cell, styleID)
-			}
-
-			row++
-		}
-	}
+	b.writeBookingData(ctx, f, sheetName, dailyBookings, items, dateHeaders)
 
 	// Настраиваем ширину колонок
-	_ = f.SetColWidth("Бронирования", "A", "A", 25)
+	_ = f.SetColWidth(sheetName, "A", "A", 25)
 	for i := 'B'; i <= 'Z'; i++ {
-		_ = f.SetColWidth("Бронирования", string(i), string(i), 20)
+		_ = f.SetColWidth(sheetName, string(i), string(i), 20)
 	}
 
 	// Объединяем ячейку для заголовка периода
 	lastCol := getLastColumn(len(dateHeaders) + 1)
-	_ = f.MergeCell("Бронирования", "A1", lastCol+"1")
+	_ = f.MergeCell(sheetName, "A1", lastCol+"1")
 
 	// Стиль для заголовка периода
 	style, _ := f.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true, Size: 14},
 		Alignment: &excelize.Alignment{Horizontal: "center"},
 	})
-	_ = f.SetCellStyle("Бронирования", "A1", "A1", style)
+	_ = f.SetCellStyle(sheetName, "A1", "A1", style)
 
 	// Удаляем стандартный лист
 	_ = f.DeleteSheet("Sheet1")
@@ -174,6 +87,112 @@ func (b *Bot) exportToExcel(ctx context.Context, startDate, endDate time.Time) (
 
 	b.logger.Info().Str("file_path", filePath).Msg("Excel file created")
 	return filePath, nil
+}
+
+func (b *Bot) writeDateHeaders(f *excelize.File, sheetName string, startDate, endDate time.Time) map[string]int {
+	col := 2
+	currentDate := startDate
+	dateHeaders := make(map[string]int)
+
+	for !currentDate.After(endDate) {
+		cell, _ := excelize.CoordinatesToCellName(col, 2)
+		dateStr := currentDate.Format("02.01")
+		_ = f.SetCellValue(sheetName, cell, dateStr)
+		dateHeaders[currentDate.Format("2006-01-02")] = col
+
+		style, _ := f.NewStyle(&excelize.Style{
+			Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DDEBF7"}, Pattern: 1},
+			Font:      &excelize.Font{Bold: true},
+			Alignment: &excelize.Alignment{Horizontal: "center"},
+		})
+		_ = f.SetCellStyle(sheetName, cell, cell, style)
+
+		col++
+		currentDate = currentDate.AddDate(0, 0, 1)
+	}
+	return dateHeaders
+}
+
+func (b *Bot) writeItemHeaders(f *excelize.File, sheetName string, items []*models.Item) {
+	row := 3
+	for _, item := range items {
+		cell, _ := excelize.CoordinatesToCellName(1, row)
+		_ = f.SetCellValue(sheetName, cell, fmt.Sprintf("%s (%d)", item.Name, item.TotalQuantity))
+
+		style, _ := f.NewStyle(&excelize.Style{
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#E2EFDA"}, Pattern: 1},
+			Font: &excelize.Font{Bold: true},
+		})
+		_ = f.SetCellStyle(sheetName, cell, cell, style)
+
+		row++
+	}
+}
+
+func (b *Bot) writeBookingData(
+	ctx context.Context, f *excelize.File, sheetName string,
+	dailyBookings map[string][]*models.Booking,
+	items []*models.Item,
+	dateHeaders map[string]int,
+) {
+	for dateKey, bookings := range dailyBookings {
+		col, exists := dateHeaders[dateKey]
+		if !exists {
+			continue
+		}
+
+		bookingsByItem := make(map[int64][]*models.Booking)
+		for _, booking := range bookings {
+			bookingsByItem[booking.ItemID] = append(bookingsByItem[booking.ItemID], booking)
+		}
+
+		row := 3
+		for _, item := range items {
+			cell, _ := excelize.CoordinatesToCellName(col, row)
+			itemBookings := bookingsByItem[item.ID]
+
+			bookedCount, err := b.bookingService.GetBookedCount(ctx, item.ID, parseDate(dateKey))
+			if err != nil {
+				b.logger.Error().Err(err).Int64("item_id", item.ID).Str("date", dateKey).Msg("Error getting booked count")
+				bookedCount = 0
+			}
+
+			var cellValue string
+			if len(itemBookings) > 0 {
+				for _, booking := range itemBookings {
+					status := b.getBookingStatusIcon(booking.Status)
+					cellValue += fmt.Sprintf("%s %s (%s)\n", status, booking.UserName, booking.Phone)
+					if booking.Comment != "" {
+						cellValue += fmt.Sprintf("   💬 %s\n", booking.Comment)
+					}
+				}
+				cellValue += fmt.Sprintf("\nЗанято: %d/%d", bookedCount, item.TotalQuantity)
+			} else {
+				cellValue = fmt.Sprintf("Свободно\n\nДоступно: %d/%d", item.TotalQuantity, item.TotalQuantity)
+			}
+
+			_ = f.SetCellValue(sheetName, cell, cellValue)
+
+			styleID, err := b.getCellStyle(f, itemBookings, bookedCount, int(item.TotalQuantity))
+			if err == nil {
+				_ = f.SetCellStyle(sheetName, cell, cell, styleID)
+			}
+			row++
+		}
+	}
+}
+
+func (b *Bot) getBookingStatusIcon(status string) string {
+	switch status {
+	case models.StatusConfirmed, models.StatusCompleted:
+		return statusSuccess
+	case models.StatusPending, models.StatusChanged:
+		return statusPending
+	case models.StatusCanceled:
+		return statusError
+	default:
+		return "❓"
+	}
 }
 
 // parseDate преобразует строку в time.Time

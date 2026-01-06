@@ -785,16 +785,6 @@ func (b *Bot) handlePhoneReceived(ctx context.Context, update *tgbotapi.Update, 
 			name,
 			normalizedPhone))
 
-	// keyboard := tgbotapi.NewReplyKeyboard(
-	// 	tgbotapi.NewKeyboardButtonRow(
-	// 		tgbotapi.NewKeyboardButton("✅ Подтвердить заявку"),
-	// 	),
-	// 	tgbotapi.NewKeyboardButtonRow(
-	// 		tgbotapi.NewKeyboardButton("❌ Отмена"),
-	// 	),
-	// )
-	// msg.ReplyMarkup = keyboard
-
 	if _, err := b.tgService.Send(msg); err != nil {
 		b.logger.Error().Err(err).Msg("Failed to send confirmation msg in handlePhoneReceived")
 	}

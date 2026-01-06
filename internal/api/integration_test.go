@@ -68,8 +68,11 @@ func createIntegrationItem(t *testing.T, db *database.DB, name string, total int
 func insertIntegrationBooking(t *testing.T, db *database.DB, item *models.Item, date time.Time, status string) {
 	t.Helper()
 	_, err := db.ExecContext(context.Background(), `
-		INSERT INTO bookings (user_id, user_name, user_nickname, phone, item_id, item_name, date, status, comment, created_at, updated_at, version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
+		INSERT INTO bookings (
+			user_id, user_name, user_nickname, phone, 
+			item_id, item_name, date, status, comment, 
+			created_at, updated_at, version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
 	`, int64(1), "tester", "tester_nick", "+100", item.ID, item.Name, date.Format("2006-01-02"), status)
 	if err != nil {
 		t.Fatalf("insert booking: %v", err)

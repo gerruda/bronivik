@@ -117,7 +117,10 @@ func (s *AvailabilityService) GetAvailabilityBulk(ctx context.Context, req *avai
 	return &availabilityv1.GetAvailabilityBulkResponse{Results: results}, nil
 }
 
-func (s *AvailabilityService) ListItems(ctx context.Context, _ *availabilityv1.ListItemsRequest) (*availabilityv1.ListItemsResponse, error) {
+func (s *AvailabilityService) ListItems(
+	ctx context.Context,
+	_ *availabilityv1.ListItemsRequest,
+) (*availabilityv1.ListItemsResponse, error) {
 	items := s.db.GetItems()
 	out := make([]*availabilityv1.Item, 0, len(items))
 	for _, it := range items {

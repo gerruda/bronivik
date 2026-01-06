@@ -59,7 +59,12 @@ func (m *MockRepository) CheckAvailability(ctx context.Context, itemID int64, da
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *MockRepository) GetAvailabilityForPeriod(ctx context.Context, itemID int64, startDate time.Time, days int) ([]*models.Availability, error) {
+func (m *MockRepository) GetAvailabilityForPeriod(
+	ctx context.Context,
+	itemID int64,
+	startDate time.Time,
+	days int,
+) ([]*models.Availability, error) {
 	args := m.Called(ctx, itemID, startDate, days)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -171,7 +176,11 @@ func (m *MockRepository) GetBookingWithAvailability(ctx context.Context, id, new
 	return args.Get(0).(*models.Booking), args.Bool(1), args.Error(2)
 }
 
-func (m *MockRepository) UpdateBookingItemAndStatusWithVersion(ctx context.Context, id, version, itemID int64, itemName, status string) error {
+func (m *MockRepository) UpdateBookingItemAndStatusWithVersion(
+	ctx context.Context,
+	id, version, itemID int64,
+	itemName, status string,
+) error {
 	args := m.Called(ctx, id, version, itemID, itemName, status)
 	return args.Error(0)
 }

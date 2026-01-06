@@ -52,8 +52,11 @@ func (db *DB) GetOrCreateUserByTelegramID(
 
 	now := time.Now()
 	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO users (telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`, telegramID, username, firstName, lastName, phone, now, now)
+		query := `INSERT INTO users (
+			telegram_id, username, first_name, last_name, phone, 
+			is_manager, is_blacklisted, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`
+		res, err := tx.ExecContext(ctx, query, telegramID, username, firstName, lastName, phone, now, now)
 		if err != nil {
 			return nil, err
 		}
@@ -332,8 +335,11 @@ func (db *DB) CreateSchedule(ctx context.Context, s *models.CabinetSchedule) err
 		return fmt.Errorf("schedule is nil")
 	}
 	now := time.Now()
-	res, err := db.ExecContext(ctx, `INSERT INTO cabinet_schedules (cabinet_id, day_of_week, start_time, end_time, slot_duration, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?)`, s.CabinetID, s.DayOfWeek, s.StartTime, s.EndTime, s.SlotDuration, now, now)
+	query := `INSERT INTO cabinet_schedules (
+		cabinet_id, day_of_week, start_time, end_time, 
+		slot_duration, is_active, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`
+	res, err := db.ExecContext(ctx, query, s.CabinetID, s.DayOfWeek, s.StartTime, s.EndTime, s.SlotDuration, now, now)
 	if err != nil {
 		return err
 	}
@@ -641,7 +647,12 @@ func checkSlotAvailabilityTx(ctx context.Context, tx *sql.Tx, cabinetID int64, d
 	return count == 0, nil
 }
 
-func resolveScheduleWindowTx(ctx context.Context, tx *sql.Tx, cabinetID int64, date time.Time) (startWin, endWin time.Time, slotDuration int, err error) {
+func resolveScheduleWindowTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	cabinetID int64,
+	date time.Time,
+) (startWin, endWin time.Time, slotDuration int, err error) {
 	day := int(date.Weekday())
 	if day == 0 {
 		day = 7 // make Monday=1..Sunday=7 consistent with UI
@@ -693,7 +704,11 @@ func resolveScheduleWindowTx(ctx context.Context, tx *sql.Tx, cabinetID int64, d
 }
 
 // GetScheduleWindow returns schedule window and slot duration for a cabinet/date.
-func (db *DB) GetScheduleWindow(ctx context.Context, cabinetID int64, date time.Time) (startWin, endWin time.Time, slotDuration int, err error) {
+func (db *DB) GetScheduleWindow(
+	ctx context.Context,
+	cabinetID int64,
+	date time.Time,
+) (startWin, endWin time.Time, slotDuration int, err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return time.Time{}, time.Time{}, 0, err

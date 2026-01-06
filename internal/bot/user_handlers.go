@@ -60,6 +60,18 @@ func (b *Bot) handleMessage(ctx context.Context, update *tgbotapi.Update) {
 func (b *Bot) handleUserCommands(ctx context.Context, update *tgbotapi.Update, state *models.UserState) bool {
 	text := update.Message.Text
 
+	if b.handleBasicCommands(ctx, update, text) {
+		return true
+	}
+
+	if b.handleNavigationCommands(ctx, update, text) {
+		return true
+	}
+
+	return b.handleBookingProcessCommands(ctx, update, state, text)
+}
+
+func (b *Bot) handleBasicCommands(ctx context.Context, update *tgbotapi.Update, text string) bool {
 	switch {
 	case text == "/start" || strings.EqualFold(text, "сброс") || strings.EqualFold(text, "reset"):
 		b.clearUserState(ctx, update.Message.From.ID)
@@ -73,7 +85,12 @@ func (b *Bot) handleUserCommands(ctx context.Context, update *tgbotapi.Update, s
 	case text == btnMyBookings:
 		b.showUserBookings(ctx, update)
 		return true
+	}
+	return false
+}
 
+func (b *Bot) handleNavigationCommands(ctx context.Context, update *tgbotapi.Update, text string) bool {
+	switch {
 	case text == btnAvailableItems:
 		b.showAvailableItems(ctx, update)
 		return true
@@ -82,6 +99,15 @@ func (b *Bot) handleUserCommands(ctx context.Context, update *tgbotapi.Update, s
 		b.handleViewSchedule(ctx, update)
 		return true
 
+	case text == btnBackToItems:
+		b.handleViewSchedule(ctx, update)
+		return true
+	}
+	return false
+}
+
+func (b *Bot) handleBookingProcessCommands(ctx context.Context, update *tgbotapi.Update, state *models.UserState, text string) bool {
+	switch {
 	case text == btnCreateBooking:
 		b.handleSelectItem(ctx, update)
 		return true
@@ -102,10 +128,6 @@ func (b *Bot) handleUserCommands(ctx context.Context, update *tgbotapi.Update, s
 			b.sendMessage(update.Message.Chat.ID, "Сначала выберите аппарат для просмотра расписания")
 			b.handleViewSchedule(ctx, update)
 		}
-		return true
-
-	case text == btnBackToItems:
-		b.handleViewSchedule(ctx, update)
 		return true
 
 	case text == btnCreateForItem:

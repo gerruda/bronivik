@@ -32,7 +32,13 @@ type HTTPServer struct {
 	log           zerolog.Logger
 }
 
-func NewHTTPServer(cfg *config.APIConfig, db *database.DB, redisClient *redis.Client, sheetsService *google.SheetsService, logger *zerolog.Logger) *HTTPServer {
+func NewHTTPServer(
+	cfg *config.APIConfig,
+	db *database.DB,
+	redisClient *redis.Client,
+	sheetsService *google.SheetsService,
+	logger *zerolog.Logger,
+) *HTTPServer {
 	apiMux := http.NewServeMux()
 	srv := &HTTPServer{
 		cfg:           cfg,
@@ -128,9 +134,17 @@ func (s *HTTPServer) parseItemName(path string, prefix string) string {
 
 	itemName := strings.TrimPrefix(path, prefix)
 	itemName = strings.TrimSpace(itemName)
+
+	return s.sanitizeItemName(itemName)
+}
+
+func (s *HTTPServer) sanitizeItemName(itemName string) string {
 	// Простейшая очистка от потенциально опасных символов
 	itemName = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == ' ' || (r >= 'а' && r <= 'я') || (r >= 'А' && r <= 'Я') {
+		isAlphaNum := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+		isExtra := r == '-' || r == '_' || r == ' '
+		isCyrillic := (r >= 'а' && r <= 'я') || (r >= 'А' && r <= 'Я')
+		if isAlphaNum || isExtra || isCyrillic {
 			return r
 		}
 		return -1

@@ -22,7 +22,13 @@ type BookingService struct {
 	logger            *zerolog.Logger
 }
 
-func NewBookingService(repo domain.Repository, eventBus domain.EventPublisher, sheetsWorker domain.SyncWorker, maxBookingDays, minBookingAdvance int, logger *zerolog.Logger) *BookingService {
+func NewBookingService(
+	repo domain.Repository,
+	eventBus domain.EventPublisher,
+	sheetsWorker domain.SyncWorker,
+	maxBookingDays, minBookingAdvance int,
+	logger *zerolog.Logger,
+) *BookingService {
 	if maxBookingDays <= 0 {
 		maxBookingDays = 365
 	}
@@ -83,7 +89,7 @@ func (s *BookingService) CreateBooking(ctx context.Context, booking *models.Book
 	}
 
 	// Публикуем событие
-	s.publishEvent(ctx, events.EventBookingCreated, booking, "system", 0)
+	s.publishEvent(events.EventBookingCreated, booking, "system", 0)
 
 	// Ставим задачу на синхронизацию
 	s.enqueueSync(ctx, booking, "upsert")
@@ -110,7 +116,12 @@ func (s *BookingService) ReopenBooking(ctx context.Context, bookingID, version, 
 	return s.updateStatusAndSync(ctx, bookingID, version, models.StatusPending, "", "", managerID)
 }
 
-func (s *BookingService) updateStatusAndSync(ctx context.Context, bookingID, version int64, status, eventType, changedBy string, managerID int64) error {
+func (s *BookingService) updateStatusAndSync(
+	ctx context.Context,
+	bookingID, version int64,
+	status, eventType, changedBy string,
+	managerID int64,
+) error {
 	err := s.repo.UpdateBookingStatusWithVersion(ctx, bookingID, version, status)
 	if err != nil {
 		return err
@@ -119,7 +130,7 @@ func (s *BookingService) updateStatusAndSync(ctx context.Context, bookingID, ver
 	booking, err := s.repo.GetBooking(ctx, bookingID)
 	if err == nil {
 		if eventType != "" {
-			s.publishEvent(ctx, eventType, booking, changedBy, managerID)
+			s.publishEvent(eventType, booking, changedBy, managerID)
 		}
 		s.enqueueSync(ctx, booking, "update_status")
 		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
@@ -163,7 +174,7 @@ func (s *BookingService) ChangeBookingItem(ctx context.Context, bookingID, versi
 
 	updatedBooking, err := s.repo.GetBooking(ctx, bookingID)
 	if err == nil {
-		s.publishEvent(ctx, events.EventBookingItemChange, updatedBooking, "manager", managerID)
+		s.publishEvent(events.EventBookingItemChange, updatedBooking, "manager", managerID)
 		s.enqueueSync(ctx, updatedBooking, "upsert")
 		if err := s.sheetsWorker.EnqueueSyncSchedule(ctx, time.Time{}, time.Time{}); err != nil {
 			s.logger.Error().Err(err).Msg("failed to enqueue sync schedule")
@@ -214,7 +225,7 @@ func (s *BookingService) GetDailyBookings(ctx context.Context, start, end time.T
 	return s.repo.GetDailyBookings(ctx, start, end)
 }
 
-func (s *BookingService) publishEvent(ctx context.Context, eventType string, booking *models.Booking, changedBy string, changedByID int64) {
+func (s *BookingService) publishEvent(eventType string, booking *models.Booking, changedBy string, changedByID int64) {
 	if s.eventBus == nil {
 		return
 	}

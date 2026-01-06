@@ -62,7 +62,13 @@ type SheetsWorker struct {
 }
 
 // NewSheetsWorker builds a worker with sane defaults.
-func NewSheetsWorker(db *database.DB, sheets SheetsClient, redisClient *redis.Client, retry RetryPolicy, logger *zerolog.Logger) *SheetsWorker {
+func NewSheetsWorker(
+	db *database.DB,
+	sheets SheetsClient,
+	redisClient *redis.Client,
+	retry RetryPolicy,
+	logger *zerolog.Logger,
+) *SheetsWorker {
 	if retry.MaxRetries == 0 {
 		retry.MaxRetries = 5
 	}

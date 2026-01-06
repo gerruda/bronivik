@@ -33,7 +33,10 @@ func TestGetAvailableSlots_RespectsBookings(t *testing.T) {
 	if dow == 0 {
 		dow = 7
 	}
-	if err = db.CreateSchedule(ctx, &models.CabinetSchedule{CabinetID: cab.ID, DayOfWeek: dow, StartTime: "09:00", EndTime: "12:00", SlotDuration: 60}); err != nil {
+	if err = db.CreateSchedule(ctx, &models.CabinetSchedule{
+		CabinetID: cab.ID, DayOfWeek: dow, StartTime: "09:00",
+		EndTime: "12:00", SlotDuration: 60,
+	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
 	}
 

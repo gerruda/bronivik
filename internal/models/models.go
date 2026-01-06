@@ -81,16 +81,17 @@ func (s *UserState) GetDates(key string) []time.Time {
 	case []interface{}:
 		var dates []time.Time
 		for _, item := range v {
-			if str, ok := item.(string); ok {
-				t, err := time.Parse(time.RFC3339, str)
+			switch val := item.(type) {
+			case string:
+				t, err := time.Parse(time.RFC3339, val)
 				if err != nil {
-					t, err = time.Parse("2006-01-02T15:04:05Z07:00", str)
+					t, err = time.Parse("2006-01-02T15:04:05Z07:00", val)
 				}
 				if err == nil {
 					dates = append(dates, t)
 				}
-			} else if t, ok := item.(time.Time); ok {
-				dates = append(dates, t)
+			case time.Time:
+				dates = append(dates, val)
 			}
 		}
 		return dates

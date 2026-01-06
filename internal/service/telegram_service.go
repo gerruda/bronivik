@@ -42,13 +42,22 @@ func (s *TelegramService) SendWithKeyboard(chatID int64, text string, keyboard t
 	return s.bot.Send(msg)
 }
 
-func (s *TelegramService) SendWithInlineKeyboard(chatID int64, text string, keyboard tgbotapi.InlineKeyboardMarkup) (tgbotapi.Message, error) {
+func (s *TelegramService) SendWithInlineKeyboard(
+	chatID int64,
+	text string,
+	keyboard tgbotapi.InlineKeyboardMarkup,
+) (tgbotapi.Message, error) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
 	return s.bot.Send(msg)
 }
 
-func (s *TelegramService) EditMessage(chatID int64, messageID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) (tgbotapi.Message, error) {
+func (s *TelegramService) EditMessage(
+	chatID int64,
+	messageID int,
+	text string,
+	keyboard *tgbotapi.InlineKeyboardMarkup,
+) (tgbotapi.Message, error) {
 	if keyboard != nil {
 		msg := tgbotapi.NewEditMessageTextAndMarkup(chatID, messageID, text, *keyboard)
 		msg.ParseMode = models.ParseModeMarkdown

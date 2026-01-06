@@ -111,7 +111,11 @@ func (s *SheetsService) UpdateUsersSheet(ctx context.Context, users []*models.Us
 	values := make([][]interface{}, 0, len(users)+1)
 
 	// Заголовки
-	headers := []interface{}{"ID", "Telegram ID", "Username", "First Name", "Last Name", "Phone", "Is Manager", "Is Blacklisted", "Language Code", "Last Activity", "Created At"}
+	headers := []interface{}{
+		"ID", "Telegram ID", "Username", "First Name", "Last Name",
+		"Phone", "Is Manager", "Is Blacklisted", "Language Code",
+		"Last Activity", "Created At",
+	}
 	values = append(values, headers)
 
 	// Данные пользователей
@@ -374,10 +378,13 @@ func bookingRowValues(booking *models.Booking) []interface{} {
 
 // UpdateBookingsSheet обновляет всю таблицу бронирований
 func (s *SheetsService) UpdateBookingsSheet(ctx context.Context, bookings []*models.Booking) error {
-	var values [][]interface{}
+	values := make([][]interface{}, 0, len(bookings)+1)
 
 	// Заголовки
-	headers := []interface{}{"ID", "User ID", "Item ID", "Date", "Status", "User Name", "User Phone", "Item Name", "Created At", "Updated At"}
+	headers := []interface{}{
+		"ID", "User ID", "Item ID", "Date", "Status",
+		"User Name", "User Phone", "Item Name", "Created At", "Updated At",
+	}
 	values = append(values, headers)
 
 	// Данные бронирований
@@ -412,7 +419,12 @@ func (s *SheetsService) UpdateBookingsSheet(ctx context.Context, bookings []*mod
 }
 
 // UpdateScheduleSheet обновляет лист с расписанием бронирований в формате таблицы
-func (s *SheetsService) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error {
+func (s *SheetsService) UpdateScheduleSheet(
+	ctx context.Context,
+	startDate, endDate time.Time,
+	dailyBookings map[string][]*models.Booking,
+	items []*models.Item,
+) error {
 	sheetId, err := s.GetSheetIdByName(ctx, s.bookingsSheetID, "Бронирования")
 	if err != nil {
 		return fmt.Errorf("unable to get sheet ID: %v", err)
@@ -564,7 +576,12 @@ func (s *SheetsService) getDateHeadersFormat(sheetId, colCount int64) *sheets.Re
 	}
 }
 
-func (s *SheetsService) prepareItemRowData(item *models.Item, startDate time.Time, dateCols int, dailyBookings map[string][]*models.Booking) ([]interface{}, []*sheets.CellData) {
+func (s *SheetsService) prepareItemRowData(
+	item *models.Item,
+	startDate time.Time,
+	dateCols int,
+	dailyBookings map[string][]*models.Booking,
+) ([]interface{}, []*sheets.CellData) {
 	rowData := []interface{}{fmt.Sprintf("%s (%d)", item.Name, item.TotalQuantity)}
 	cellFormats := make([]*sheets.CellData, 0, dateCols)
 

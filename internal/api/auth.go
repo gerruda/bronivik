@@ -56,6 +56,14 @@ func (a *AuthInterceptor) Unary() grpc.UnaryServerInterceptor {
 	}
 }
 
+const (
+	apiKeyHeaderDefault   = "x-api-key"
+	apiExtraHeaderDefault = "x-api-extra"
+	permReadAvailability  = "read:availability"
+	permReadItems         = "read:items"
+	clientKeyUnknown      = "unknown"
+)
+
 func (a *AuthInterceptor) checkAuth(ctx context.Context, fullMethod string) error {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -64,12 +72,12 @@ func (a *AuthInterceptor) checkAuth(ctx context.Context, fullMethod string) erro
 
 	apiKeyHeader := strings.ToLower(strings.TrimSpace(a.cfg.Auth.HeaderAPIKey))
 	if apiKeyHeader == "" {
-		apiKeyHeader = "x-api-key"
+		apiKeyHeader = apiKeyHeaderDefault
 	}
 
 	extraHeader := strings.ToLower(strings.TrimSpace(a.cfg.Auth.HeaderExtra))
 	if extraHeader == "" {
-		extraHeader = "x-api-extra"
+		extraHeader = apiExtraHeaderDefault
 	}
 
 	apiKey := first(md.Get(apiKeyHeader))
@@ -116,11 +124,11 @@ func (a *AuthInterceptor) checkPermissions(client config.APIClientKey, fullMetho
 func requiredPermission(fullMethod string) string {
 	switch fullMethod {
 	case "/bronivik.availability.v1.AvailabilityService/GetAvailability":
-		return "read:availability"
+		return permReadAvailability
 	case "/bronivik.availability.v1.AvailabilityService/GetAvailabilityBulk":
-		return "read:availability"
+		return permReadAvailability
 	case "/bronivik.availability.v1.AvailabilityService/ListItems":
-		return "read:items"
+		return permReadItems
 	default:
 		return ""
 	}
@@ -143,7 +151,7 @@ func (a *AuthInterceptor) clientKey(ctx context.Context) string {
 	md, _ := metadata.FromIncomingContext(ctx)
 	apiKeyHeader := strings.ToLower(strings.TrimSpace(a.cfg.Auth.HeaderAPIKey))
 	if apiKeyHeader == "" {
-		apiKeyHeader = "x-api-key"
+		apiKeyHeader = apiKeyHeaderDefault
 	}
 	apiKey := first(md.Get(apiKeyHeader))
 	if apiKey != "" {
@@ -153,7 +161,7 @@ func (a *AuthInterceptor) clientKey(ctx context.Context) string {
 	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
 		return p.Addr.String()
 	}
-	return "unknown"
+	return clientKeyUnknown
 }
 
 func first(vals []string) string {
@@ -182,7 +190,7 @@ func LoggingUnaryInterceptor(logger *zerolog.Logger) grpc.UnaryServerInterceptor
 			code = status.Code(err)
 		}
 
-		remote := "unknown"
+		remote := clientKeyUnknown
 		if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
 			remote = p.Addr.String()
 		}

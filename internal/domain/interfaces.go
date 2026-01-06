@@ -72,7 +72,12 @@ type SheetsWriter interface {
 	UpdateBookingsSheet(ctx context.Context, bookings []*models.Booking) error
 	ReplaceBookingsSheet(ctx context.Context, bookings []*models.Booking) error
 	AppendBooking(ctx context.Context, booking *models.Booking) error
-	UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error
+	UpdateScheduleSheet(
+		ctx context.Context,
+		startDate, endDate time.Time,
+		dailyBookings map[string][]*models.Booking,
+		items []*models.Item,
+	) error
 	UpsertBooking(ctx context.Context, booking *models.Booking) error
 	UpdateBookingStatus(ctx context.Context, bookingID int64, status string) error
 }

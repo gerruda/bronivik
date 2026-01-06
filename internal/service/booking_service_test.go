@@ -217,7 +217,13 @@ func TestBookingService(t *testing.T) {
 		repo.AssertExpectations(t)
 	})
 
-	testStatusUpdate := func(name string, bookingID int64, version int64, status string, method func(context.Context, int64, int64, int64) error) {
+	testStatusUpdate := func(
+		name string,
+		bookingID int64,
+		version int64,
+		status string,
+		method func(context.Context, int64, int64, int64) error,
+	) {
 		t.Run(name, func(t *testing.T) {
 			booking := &models.Booking{ID: bookingID, Status: status}
 			repo.On("UpdateBookingStatusWithVersion", ctx, bookingID, version, status).Return(nil).Once()

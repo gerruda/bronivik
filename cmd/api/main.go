@@ -188,7 +188,13 @@ func startMetrics(ctx context.Context, cfg *config.Config, logger *zerolog.Logge
 	go startMetricsServer(ctx, port, logger)
 }
 
-func startServers(ctx context.Context, grpcServer *api.GRPCServer, httpServer *api.HTTPServer, cfg *config.Config, logger *zerolog.Logger) error {
+func startServers(
+	ctx context.Context,
+	grpcServer *api.GRPCServer,
+	httpServer *api.HTTPServer,
+	cfg *config.Config,
+	logger *zerolog.Logger,
+) error {
 	go func() {
 		if err := grpcServer.Serve(); err != nil {
 			logger.Error().Err(err).Msg("grpc server stopped")
