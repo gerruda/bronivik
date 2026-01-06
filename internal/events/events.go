@@ -9,7 +9,7 @@ import (
 const (
 	EventBookingCreated    = "booking_created"
 	EventBookingConfirmed  = "booking_confirmed"
-	EventBookingCanceled  = "booking_canceled"
+	EventBookingCanceled   = "booking_canceled"
 	EventBookingCompleted  = "booking_completed"
 	EventBookingItemChange = "booking_item_changed"
 )

@@ -122,7 +122,11 @@ func (m *mockTelegramService) SendWithKeyboard(chatID int64, text string, keyboa
 	return tgbotapi.Message{}, nil
 }
 
-func (m *mockTelegramService) SendWithInlineKeyboard(chatID int64, text string, keyboard tgbotapi.InlineKeyboardMarkup) (tgbotapi.Message, error) {
+func (m *mockTelegramService) SendWithInlineKeyboard(
+	chatID int64,
+	text string,
+	keyboard tgbotapi.InlineKeyboardMarkup,
+) (tgbotapi.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	msg := tgbotapi.NewMessage(chatID, text)
@@ -143,11 +147,16 @@ func (m *mockTelegramService) clearSentMessages() {
 	m.sentMessages = nil
 }
 
-func (m *mockTelegramService) EditMessage(chatID int64, messageID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) (tgbotapi.Message, error) {
+func (m *mockTelegramService) EditMessage(
+	chatID int64,
+	messageID int,
+	text string,
+	keyboard *tgbotapi.InlineKeyboardMarkup,
+) (tgbotapi.Message, error) {
 	return tgbotapi.Message{}, nil
 }
 
-func (m *mockTelegramService) AnswerCallback(callbackID string, text string) error {
+func (m *mockTelegramService) AnswerCallback(callbackID, text string) error {
 	return nil
 }
 
@@ -278,7 +287,7 @@ func (m *mockUserService) IsBlacklisted(userID int64) bool {
 func (m *mockUserService) GetManagers(ctx context.Context) ([]models.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var managers []models.User
+	managers := make([]models.User, 0, len(m.users))
 	for _, u := range m.users {
 		if u.IsManager {
 			managers = append(managers, *u)
@@ -333,7 +342,7 @@ func (m *mockUserService) GetUserByID(ctx context.Context, id int64) (*models.Us
 func (m *mockUserService) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var users []models.User
+	users := make([]models.User, 0, len(m.users))
 	for _, u := range m.users {
 		users = append(users, *u)
 	}
@@ -353,11 +362,12 @@ func (m *mockUserService) GetActiveUsers(ctx context.Context, days int) ([]model
 	return users, nil
 }
 
-func (m *mockUserService) setUsers(users map[int64]*models.User) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.users = users
-}
+
+// func (m *mockUserService) setUsers(users map[int64]*models.User) {
+// 	m.mu.Lock()
+// 	defer m.mu.Unlock()
+// 	m.users = users
+// }
 
 func (m *mockUserService) getUsers() map[int64]*models.User {
 	m.mu.RLock()
@@ -435,7 +445,7 @@ func (m *mockItemService) DeactivateItem(ctx context.Context, id int64) error {
 	return errors.New("not found")
 }
 
-func (m *mockItemService) ReorderItem(ctx context.Context, id int64, order int64) error {
+func (m *mockItemService) ReorderItem(ctx context.Context, id, order int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, it := range m.items {
@@ -528,7 +538,7 @@ func (m *mockBookingService) GetBookedCount(ctx context.Context, itemID int64, d
 	return 0, nil
 }
 
-func (m *mockBookingService) ConfirmBooking(ctx context.Context, bookingID int64, version int64, managerID int64) error {
+func (m *mockBookingService) ConfirmBooking(ctx context.Context, bookingID, version, managerID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if b, ok := m.bookings[bookingID]; ok {
@@ -538,7 +548,7 @@ func (m *mockBookingService) ConfirmBooking(ctx context.Context, bookingID int64
 	return nil
 }
 
-func (m *mockBookingService) CompleteBooking(ctx context.Context, bookingID int64, version int64, managerID int64) error {
+func (m *mockBookingService) CompleteBooking(ctx context.Context, bookingID, version, managerID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if b, ok := m.bookings[bookingID]; ok {
@@ -548,7 +558,7 @@ func (m *mockBookingService) CompleteBooking(ctx context.Context, bookingID int6
 	return nil
 }
 
-func (m *mockBookingService) ReopenBooking(ctx context.Context, bookingID int64, version int64, managerID int64) error {
+func (m *mockBookingService) ReopenBooking(ctx context.Context, bookingID, version, managerID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if b, ok := m.bookings[bookingID]; ok {
@@ -558,7 +568,7 @@ func (m *mockBookingService) ReopenBooking(ctx context.Context, bookingID int64,
 	return nil
 }
 
-func (m *mockBookingService) ChangeBookingItem(ctx context.Context, bookingID int64, version int64, newItemID int64, managerID int64) error {
+func (m *mockBookingService) ChangeBookingItem(ctx context.Context, bookingID, version, newItemID, managerID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if b, ok := m.bookings[bookingID]; ok {
@@ -569,7 +579,7 @@ func (m *mockBookingService) ChangeBookingItem(ctx context.Context, bookingID in
 	return nil
 }
 
-func (m *mockBookingService) RescheduleBooking(ctx context.Context, bookingID int64, managerID int64) error {
+func (m *mockBookingService) RescheduleBooking(ctx context.Context, bookingID, managerID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if b, ok := m.bookings[bookingID]; ok {
@@ -619,11 +629,16 @@ func (m *mockBookingService) GetBookingsByDateRange(ctx context.Context, start, 
 	return result, nil
 }
 
-func (m *mockBookingService) GetAvailability(ctx context.Context, itemID int64, startDate time.Time, days int) ([]models.Availability, error) {
+func (m *mockBookingService) GetAvailability(
+	ctx context.Context,
+	itemID int64,
+	startDate time.Time,
+	days int,
+) ([]models.Availability, error) {
 	return []models.Availability{{Date: startDate, Available: 1}}, nil
 }
 
-func (m *mockBookingService) RejectBooking(ctx context.Context, bookingID int64, version int64, managerID int64) error {
+func (m *mockBookingService) RejectBooking(ctx context.Context, bookingID, version, managerID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if b, ok := m.bookings[bookingID]; ok {
@@ -656,7 +671,12 @@ func (m *mockSheetsWriter) AppendBooking(ctx context.Context, booking *models.Bo
 	return nil
 }
 
-func (m *mockSheetsWriter) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, bookings map[string][]models.Booking, items []models.Item) error {
+func (m *mockSheetsWriter) UpdateScheduleSheet(
+	ctx context.Context,
+	startDate, endDate time.Time,
+	bookings map[string][]models.Booking,
+	items []models.Item,
+) error {
 	return nil
 }
 
@@ -781,7 +801,7 @@ func TestHandleSelectItem(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
 	states := state.getStates()
 	if states[123].CurrentStep != models.StateSelectItem {
@@ -826,7 +846,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 		},
 	}
 
-	b.handleCallbackQuery(context.Background(), update)
+	b.handleCallbackQuery(context.Background(), &update)
 
 	// After selecting an item, it should ask for a date
 	states := state.getStates()
@@ -865,7 +885,7 @@ func TestHandleCallbackQuery_BackToMain(t *testing.T) {
 		},
 	}
 
-	b.handleCallbackQuery(context.Background(), update)
+	b.handleCallbackQuery(context.Background(), &update)
 
 	states := state.getStates()
 	if states[123] == nil {
@@ -905,7 +925,7 @@ func TestHandleCallbackQuery_ScheduleSelectItem(t *testing.T) {
 		},
 	}
 
-	b.handleCallbackQuery(context.Background(), update)
+	b.handleCallbackQuery(context.Background(), &update)
 
 	states := state.getStates()
 	if states[123].CurrentStep != models.StateViewSchedule {
@@ -929,7 +949,7 @@ func TestHandleDateInput(t *testing.T) {
 
 	mocks.booking.On("ValidateBookingDate", mock.Anything).Return(nil)
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
 	state, _ := mocks.state.GetUserState(context.Background(), 123)
 	if state.CurrentStep != models.StateEnterName {
@@ -968,7 +988,7 @@ func TestHandleStartWithUserTracking(t *testing.T) {
 		},
 	}
 
-	b.handleStartWithUserTracking(context.Background(), update)
+	b.handleStartWithUserTracking(context.Background(), &update)
 
 	users := userSvc.getUsers()
 	user, ok := users[123]
@@ -1021,7 +1041,7 @@ func TestHandlePhoneReceived(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
 	states := state.getStates()
 	if states[123] == nil || states[123].CurrentStep != models.StateMainMenu {
@@ -1035,14 +1055,14 @@ func TestBookingFlow(t *testing.T) {
 	userID := int64(123)
 
 	// 1. Start booking
-	b.handleSelectItem(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: userID}, Chat: &tgbotapi.Chat{ID: userID}}})
+	b.handleSelectItem(ctx, &tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: userID}, Chat: &tgbotapi.Chat{ID: userID}}})
 	state, _ := mocks.state.GetUserState(ctx, userID)
 	if state.CurrentStep != models.StateSelectItem {
 		t.Fatalf("expected state %s, got %s", models.StateSelectItem, state.CurrentStep)
 	}
 
 	// 2. Select item
-	b.handleCallbackQuery(ctx, tgbotapi.Update{CallbackQuery: &tgbotapi.CallbackQuery{
+	b.handleCallbackQuery(ctx, &tgbotapi.Update{CallbackQuery: &tgbotapi.CallbackQuery{
 		From:    &tgbotapi.User{ID: userID},
 		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: userID}},
 		Data:    "select_item:1",
@@ -1055,7 +1075,7 @@ func TestBookingFlow(t *testing.T) {
 	// 3. Enter date
 	futureDate := time.Now().AddDate(0, 0, 5).Format("02.01.2006")
 	mocks.booking.On("ValidateBookingDate", mock.Anything).Return(nil)
-	b.handleMessage(ctx, tgbotapi.Update{Message: &tgbotapi.Message{
+	b.handleMessage(ctx, &tgbotapi.Update{Message: &tgbotapi.Message{
 		From: &tgbotapi.User{ID: userID},
 		Chat: &tgbotapi.Chat{ID: userID},
 		Text: futureDate,
@@ -1066,7 +1086,7 @@ func TestBookingFlow(t *testing.T) {
 	}
 
 	// 4. Enter name
-	b.handleMessage(ctx, tgbotapi.Update{Message: &tgbotapi.Message{
+	b.handleMessage(ctx, &tgbotapi.Update{Message: &tgbotapi.Message{
 		From: &tgbotapi.User{ID: userID},
 		Chat: &tgbotapi.Chat{ID: userID},
 		Text: "Test User",
@@ -1078,7 +1098,7 @@ func TestBookingFlow(t *testing.T) {
 
 	// 5. Enter phone
 	mocks.booking.On("CheckAvailability", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
-	b.handleMessage(ctx, tgbotapi.Update{Message: &tgbotapi.Message{
+	b.handleMessage(ctx, &tgbotapi.Update{Message: &tgbotapi.Message{
 		From: &tgbotapi.User{ID: userID},
 		Chat: &tgbotapi.Chat{ID: userID},
 		Text: "89991234567",
@@ -1139,7 +1159,7 @@ func TestHandleBlacklistedUser(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
 	// Should not send any messages
 	if len(tg.getSentMessages()) > 0 {
@@ -1176,7 +1196,7 @@ func TestHandleViewSchedule(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
 	if len(tg.sentMessages) == 0 {
 		t.Errorf("expected message sent")
@@ -1184,21 +1204,7 @@ func TestHandleViewSchedule(t *testing.T) {
 }
 
 func TestHandleMessage_Contacts(t *testing.T) {
-	tg := &mockTelegramService{updatesChan: make(chan tgbotapi.Update, 1)}
-	state := &mockStateManager{states: make(map[int64]*models.UserState)}
-	userSvc := &mockUserService{}
-	itemSvc := &mockItemService{}
-	bookingSvc := &mockBookingService{}
-	sheetsSvc := &mockSheetsWriter{}
-	worker := &mockSyncWorker{}
-	events := &mockEventPublisher{}
-	logger := zerolog.New(io.Discard)
-
-	cfg := &config.Config{
-		Telegram: config.TelegramConfig{BotToken: "test"},
-	}
-
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
+	b, mocks := setupTestBot()
 
 	update := tgbotapi.Update{
 		Message: &tgbotapi.Message{
@@ -1208,29 +1214,15 @@ func TestHandleMessage_Contacts(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
-	if len(tg.sentMessages) == 0 {
+	if len(mocks.tg.sentMessages) == 0 {
 		t.Errorf("expected message sent")
 	}
 }
 
 func TestHandleMessage_MyBookings(t *testing.T) {
-	tg := &mockTelegramService{updatesChan: make(chan tgbotapi.Update, 1)}
-	state := &mockStateManager{states: make(map[int64]*models.UserState)}
-	userSvc := &mockUserService{}
-	itemSvc := &mockItemService{}
-	bookingSvc := &mockBookingService{}
-	sheetsSvc := &mockSheetsWriter{}
-	worker := &mockSyncWorker{}
-	events := &mockEventPublisher{}
-	logger := zerolog.New(io.Discard)
-
-	cfg := &config.Config{
-		Telegram: config.TelegramConfig{BotToken: "test"},
-	}
-
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
+	b, mocks := setupTestBot()
 
 	update := tgbotapi.Update{
 		Message: &tgbotapi.Message{
@@ -1240,9 +1232,9 @@ func TestHandleMessage_MyBookings(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
-	if len(tg.sentMessages) == 0 {
+	if len(mocks.tg.sentMessages) == 0 {
 		t.Errorf("expected message sent")
 	}
 }
@@ -1276,7 +1268,7 @@ func TestHandleManagerCommand_AllBookings(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
 	if len(tg.getSentMessages()) == 0 {
 		t.Errorf("expected message sent to manager")
@@ -1320,7 +1312,7 @@ func TestHandleManagerCallback_Confirm(t *testing.T) {
 		},
 	}
 
-	b.handleCallbackQuery(context.Background(), update)
+	b.handleCallbackQuery(context.Background(), &update)
 
 	bookings := bookingSvc.getBookings()
 	if bookings[1].Status != models.StatusConfirmed {
@@ -1355,7 +1347,7 @@ func TestHandleCancel(t *testing.T) {
 		},
 	}
 
-	b.handleMessage(context.Background(), update)
+	b.handleMessage(context.Background(), &update)
 
 	s, _ := state.GetUserState(context.Background(), 123)
 	if s == nil {
@@ -1365,81 +1357,36 @@ func TestHandleCancel(t *testing.T) {
 	}
 }
 
-func TestHandleBack_ToDate(t *testing.T) {
-	tg := &mockTelegramService{updatesChan: make(chan tgbotapi.Update, 1)}
-	state := &mockStateManager{states: make(map[int64]*models.UserState)}
-	userSvc := &mockUserService{}
-	itemSvc := &mockItemService{
-		items: []models.Item{{ID: 1, Name: "Item 1"}},
-	}
-	bookingSvc := &mockBookingService{}
-	sheetsSvc := &mockSheetsWriter{}
-	worker := &mockSyncWorker{}
-	events := &mockEventPublisher{}
-	logger := zerolog.New(io.Discard)
-
-	cfg := &config.Config{
-		Telegram: config.TelegramConfig{BotToken: "test"},
+func TestHandleBack(t *testing.T) {
+	tests := []struct {
+		name         string
+		fromStep     string
+		expectedStep string
+	}{
+		{"ToDate", models.StateEnterName, models.StateWaitingDate},
+		{"ToName", models.StatePhoneNumber, models.StateEnterName},
 	}
 
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, mocks := setupTestBot()
 
-	// From StateEnterName back to StateWaitingDate
-	err := state.SetUserState(context.Background(), 123, models.StateEnterName, map[string]interface{}{"item_id": int64(1)})
-	require.NoError(t, err)
+			err := mocks.state.SetUserState(context.Background(), 123, tt.fromStep, map[string]interface{}{"item_id": int64(1)})
+			require.NoError(t, err)
 
-	update := tgbotapi.Update{
-		Message: &tgbotapi.Message{
-			From: &tgbotapi.User{ID: 123},
-			Chat: &tgbotapi.Chat{ID: 123},
-			Text: "⬅️ Назад",
-		},
-	}
+			update := tgbotapi.Update{
+				Message: &tgbotapi.Message{
+					From: &tgbotapi.User{ID: 123},
+					Chat: &tgbotapi.Chat{ID: 123},
+					Text: "⬅️ Назад",
+				},
+			}
 
-	b.handleMessage(context.Background(), update)
+			b.handleMessage(context.Background(), &update)
 
-	s, _ := state.GetUserState(context.Background(), 123)
-	if s.CurrentStep != models.StateWaitingDate {
-		t.Errorf("expected state %s, got %s", models.StateWaitingDate, s.CurrentStep)
-	}
-}
-
-func TestHandleBack_ToName(t *testing.T) {
-	tg := &mockTelegramService{updatesChan: make(chan tgbotapi.Update, 1)}
-	state := &mockStateManager{states: make(map[int64]*models.UserState)}
-	userSvc := &mockUserService{}
-	itemSvc := &mockItemService{
-		items: []models.Item{{ID: 1, Name: "Item 1"}},
-	}
-	bookingSvc := &mockBookingService{}
-	sheetsSvc := &mockSheetsWriter{}
-	worker := &mockSyncWorker{}
-	events := &mockEventPublisher{}
-	logger := zerolog.New(io.Discard)
-
-	cfg := &config.Config{
-		Telegram: config.TelegramConfig{BotToken: "test"},
-	}
-
-	b, _ := NewBot(tg, cfg, state, sheetsSvc, worker, events, bookingSvc, userSvc, itemSvc, nil, &logger)
-
-	// From StatePhoneNumber back to StateEnterName
-	err := state.SetUserState(context.Background(), 123, models.StatePhoneNumber, map[string]interface{}{"item_id": int64(1)})
-	require.NoError(t, err)
-
-	update := tgbotapi.Update{
-		Message: &tgbotapi.Message{
-			From: &tgbotapi.User{ID: 123},
-			Chat: &tgbotapi.Chat{ID: 123},
-			Text: "⬅️ Назад",
-		},
-	}
-
-	b.handleMessage(context.Background(), update)
-
-	s, _ := state.GetUserState(context.Background(), 123)
-	if s.CurrentStep != models.StateEnterName {
-		t.Errorf("expected state %s, got %s", models.StateEnterName, s.CurrentStep)
+			s, _ := mocks.state.GetUserState(context.Background(), 123)
+			assert.Equal(t, tt.expectedStep, s.CurrentStep)
+		})
 	}
 }
 
@@ -1450,7 +1397,8 @@ func TestGetErrorMessage(t *testing.T) {
 		expected string
 	}{
 		{nil, ""},
-		{database.ErrNotAvailable, "⚠️ Извините, этот аппарат уже забронирован на выбранную дату. Пожалуйста, выберите другое время или аппарат."},
+		{database.ErrNotAvailable, "⚠️ Извините, этот аппарат уже забронирован на выбранную дату. " +
+			"Пожалуйста, выберите другое время или аппарат."},
 		{database.ErrPastDate, "⚠️ Нельзя создавать бронирование на прошедшую дату."},
 		{database.ErrDateTooFar, "⚠️ Вы не можете бронировать так далеко в будущем. Пожалуйста, выберите более раннюю дату."},
 		{database.ErrConcurrentModification, "⚠️ Произошла ошибка при сохранении (конфликт версий). Пожалуйста, попробуйте еще раз."},
@@ -1487,7 +1435,7 @@ func TestManagerBookingFlow(t *testing.T) {
 		},
 	}
 
-	b.startManagerBooking(ctx, update)
+	b.startManagerBooking(ctx, &update)
 
 	state := b.getUserState(ctx, managerID)
 	assert.NotNil(t, state)
@@ -1497,7 +1445,7 @@ func TestManagerBookingFlow(t *testing.T) {
 
 	// 2. Handle Client Name
 	mocks.tg.clearSentMessages()
-	b.handleManagerClientName(ctx, update, "John Doe", state)
+	b.handleManagerClientName(ctx, &update, "John Doe", state)
 
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingClientPhone, state.CurrentStep)
@@ -1505,7 +1453,7 @@ func TestManagerBookingFlow(t *testing.T) {
 
 	// 3. Handle Client Phone
 	mocks.tg.clearSentMessages()
-	b.handleManagerClientPhone(ctx, update, "+79991234567", state)
+	b.handleManagerClientPhone(ctx, &update, "+79991234567", state)
 
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingItemSelection, state.CurrentStep)
@@ -1523,7 +1471,7 @@ func TestManagerBookingFlow(t *testing.T) {
 			Data: "manager_select_item:1",
 		},
 	}
-	b.handleManagerItemSelection(ctx, callbackUpdate)
+	b.handleManagerItemSelection(ctx, &callbackUpdate)
 
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingDateType, state.CurrentStep)
@@ -1532,7 +1480,7 @@ func TestManagerBookingFlow(t *testing.T) {
 	// 5. Handle Date Type (Single)
 	mocks.tg.clearSentMessages()
 	callbackUpdate.CallbackQuery.Data = "manager_single_date"
-	b.handleManagerDateType(ctx, callbackUpdate, "single")
+	b.handleManagerDateType(ctx, &callbackUpdate, "single")
 
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingSingleDate, state.CurrentStep)
@@ -1542,7 +1490,7 @@ func TestManagerBookingFlow(t *testing.T) {
 	mocks.tg.clearSentMessages()
 	dateStr := time.Now().AddDate(0, 0, 1).Format("02.01.2006")
 	mocks.booking.On("ValidateBookingDate", mock.Anything).Return(nil)
-	b.handleManagerSingleDate(ctx, update, dateStr, state)
+	b.handleManagerSingleDate(ctx, &update, dateStr, state)
 
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingComment, state.CurrentStep)
@@ -1550,7 +1498,7 @@ func TestManagerBookingFlow(t *testing.T) {
 
 	// 7. Handle Comment
 	mocks.tg.clearSentMessages()
-	b.handleManagerComment(ctx, update, "Test comment", state)
+	b.handleManagerComment(ctx, &update, "Test comment", state)
 
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerConfirmBooking, state.CurrentStep)
@@ -1560,7 +1508,7 @@ func TestManagerBookingFlow(t *testing.T) {
 	mocks.tg.clearSentMessages()
 	mocks.booking.On("CheckAvailability", mock.Anything, int64(1), mock.Anything).Return(true, nil)
 	mocks.booking.On("CreateBooking", mock.Anything, mock.Anything).Return(nil)
-	b.createManagerBookings(ctx, update, state)
+	b.createManagerBookings(ctx, &update, state)
 
 	state = b.getUserState(ctx, managerID)
 	assert.NotNil(t, state)
@@ -1578,7 +1526,6 @@ func TestManagerBookingFlow_DateRange(t *testing.T) {
 		"client_name":  "John Doe",
 		"client_phone": "79991234567",
 	})
-	state := b.getUserState(ctx, managerID)
 
 	update := tgbotapi.Update{
 		Message: &tgbotapi.Message{
@@ -1595,30 +1542,30 @@ func TestManagerBookingFlow_DateRange(t *testing.T) {
 	}
 
 	// 1. Select Range
-	b.handleManagerDateType(ctx, update, "range")
-	state = b.getUserState(ctx, managerID)
+	b.handleManagerDateType(ctx, &update, "range")
+	state := b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingStartDate, state.CurrentStep)
 
 	// 2. Handle Start Date
 	startDate := time.Now().AddDate(0, 0, 1)
 	mocks.booking.On("ValidateBookingDate", mock.Anything).Return(nil)
-	b.handleManagerStartDate(ctx, update, startDate.Format("02.01.2006"), state)
+	b.handleManagerStartDate(ctx, &update, startDate.Format("02.01.2006"), state)
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingEndDate, state.CurrentStep)
 
 	// 3. Handle End Date
 	endDate := startDate.AddDate(0, 0, 2) // 3 days total
-	b.handleManagerEndDate(ctx, update, endDate.Format("02.01.2006"), state)
+	b.handleManagerEndDate(ctx, &update, endDate.Format("02.01.2006"), state)
 	state = b.getUserState(ctx, managerID)
 	assert.Equal(t, models.StateManagerWaitingComment, state.CurrentStep)
 	dates := state.GetDates("dates")
 	assert.Len(t, dates, 3)
 
 	// 4. Handle Comment & Create
-	b.handleManagerComment(ctx, update, "Range comment", state)
+	b.handleManagerComment(ctx, &update, "Range comment", state)
 	mocks.booking.On("CheckAvailability", mock.Anything, int64(1), mock.Anything).Return(true, nil)
 	mocks.booking.On("CreateBooking", mock.Anything, mock.Anything).Return(nil)
-	b.createManagerBookings(ctx, update, state)
+	b.createManagerBookings(ctx, &update, state)
 
 	state = b.getUserState(ctx, managerID)
 	assert.NotNil(t, state)
@@ -1639,7 +1586,7 @@ func TestManagerItemsCommands(t *testing.T) {
 
 	// 1. Add Item
 	update.Message.Text = "/add_item NewItem 5"
-	b.handleAddItemCommand(ctx, update)
+	b.handleAddItemCommand(ctx, &update)
 	assert.Len(t, mocks.tg.getSentMessages(), 1)
 	assert.Contains(t, mocks.tg.getSentMessages()[0].(tgbotapi.MessageConfig).Text, "✅ Аппарат 'NewItem' добавлен")
 
@@ -1647,35 +1594,35 @@ func TestManagerItemsCommands(t *testing.T) {
 	mocks.tg.clearSentMessages()
 	mocks.item.setItems([]models.Item{{ID: 1, Name: "Item 1", TotalQuantity: 10, SortOrder: 1}})
 	update.Message.Text = "/list_items"
-	b.handleListItemsCommand(ctx, update)
+	b.handleListItemsCommand(ctx, &update)
 	assert.Len(t, mocks.tg.getSentMessages(), 1)
 	assert.Contains(t, mocks.tg.getSentMessages()[0].(tgbotapi.MessageConfig).Text, "📋 Список активных аппаратов")
 
 	// 3. Edit Item
 	mocks.tg.clearSentMessages()
 	update.Message.Text = "/edit_item Item 1 20"
-	b.handleEditItemCommand(ctx, update)
+	b.handleEditItemCommand(ctx, &update)
 	assert.Len(t, mocks.tg.getSentMessages(), 1)
 	assert.Contains(t, mocks.tg.getSentMessages()[0].(tgbotapi.MessageConfig).Text, "✅ Аппарат 'Item 1' обновлён")
 
 	// 4. Set Item Order
 	mocks.tg.clearSentMessages()
 	update.Message.Text = "/set_item_order Item 1 5"
-	b.handleSetItemOrderCommand(ctx, update)
+	b.handleSetItemOrderCommand(ctx, &update)
 	assert.Len(t, mocks.tg.getSentMessages(), 1)
 	assert.Contains(t, mocks.tg.getSentMessages()[0].(tgbotapi.MessageConfig).Text, "↕️ Порядок 'Item 1' установлен на 5")
 
 	// 5. Move Item Up/Down
 	mocks.tg.clearSentMessages()
 	update.Message.Text = "/move_item_up Item 1"
-	b.handleMoveItemCommand(ctx, update, -1)
+	b.handleMoveItemCommand(ctx, &update, -1)
 	assert.Len(t, mocks.tg.getSentMessages(), 1)
 	assert.Contains(t, mocks.tg.getSentMessages()[0].(tgbotapi.MessageConfig).Text, "перемещён вверх")
 
 	// 6. Disable Item
 	mocks.tg.clearSentMessages()
 	update.Message.Text = "/disable_item Item 1"
-	b.handleDisableItemCommand(ctx, update)
+	b.handleDisableItemCommand(ctx, &update)
 	assert.Len(t, mocks.tg.getSentMessages(), 1)
 	assert.Contains(t, mocks.tg.getSentMessages()[0].(tgbotapi.MessageConfig).Text, "деактивирован")
 }
@@ -1734,9 +1681,14 @@ func TestManagerStats(t *testing.T) {
 	b.config.Exports.Path = tmpDir
 
 	// Add some users
-	err = mocks.user.SaveUser(context.Background(), &models.User{TelegramID: 1, FirstName: "User 1", LastActivity: time.Now()})
+	err = mocks.user.SaveUser(context.Background(), &models.User{
+		TelegramID: 1, FirstName: "User 1", LastActivity: time.Now(),
+	})
 	require.NoError(t, err)
-	err = mocks.user.SaveUser(context.Background(), &models.User{TelegramID: 2, FirstName: "User 2", LastActivity: time.Now().AddDate(0, 0, -40), IsBlacklisted: true})
+	err = mocks.user.SaveUser(context.Background(), &models.User{
+		TelegramID: 2, FirstName: "User 2",
+		LastActivity: time.Now().AddDate(0, 0, -40), IsBlacklisted: true,
+	})
 	require.NoError(t, err)
 
 	// Add some bookings
@@ -1754,7 +1706,7 @@ func TestManagerStats(t *testing.T) {
 		},
 	}
 
-	b.getUserStats(context.Background(), update)
+	b.getUserStats(context.Background(), &update)
 	assert.True(t, len(mocks.tg.getSentMessages()) > 0)
 	sentMsgs := mocks.tg.getSentMessages()
 	msg := sentMsgs[len(sentMsgs)-1].(tgbotapi.MessageConfig)
@@ -1773,7 +1725,7 @@ func TestManagerStats(t *testing.T) {
 		},
 	}
 
-	b.handleExportUsers(context.Background(), callbackUpdate)
+	b.handleExportUsers(context.Background(), &callbackUpdate)
 	// Should send a document
 	foundDoc := false
 	for _, m := range mocks.tg.getSentMessages() {
@@ -1909,7 +1861,7 @@ func TestManagerBookingActions(t *testing.T) {
 			Chat: &tgbotapi.Chat{ID: 123},
 		},
 	}
-	b.showManagerBookingDetail(ctx, update, 1)
+	b.showManagerBookingDetail(ctx, &update, 1)
 	assert.True(t, len(mocks.tg.getSentMessages()) > 0)
 
 	// Test reopenBooking
@@ -1943,7 +1895,7 @@ func TestManagerBookingActions(t *testing.T) {
 			Data: "change_to_1_1",
 		},
 	}
-	b.handleChangeItem(ctx, callbackUpdate)
+	b.handleChangeItem(ctx, &callbackUpdate)
 	assert.Equal(t, models.StatusChanged, booking.Status)
 
 	// Test rescheduleBooking
@@ -1952,7 +1904,7 @@ func TestManagerBookingActions(t *testing.T) {
 
 	// Test handleCallButton
 	callbackUpdate.CallbackQuery.Data = "call_booking:1"
-	b.handleCallButton(ctx, callbackUpdate)
+	b.handleCallButton(ctx, &callbackUpdate)
 	assert.True(t, len(mocks.tg.sentMessages) > 0)
 }
 
@@ -1962,24 +1914,60 @@ func TestManagerMoreActions(t *testing.T) {
 	managerID := int64(123)
 
 	// Test non-manager access to startManagerBooking
-	b.startManagerBooking(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 999}, Chat: &tgbotapi.Chat{ID: 999}}})
+	b.startManagerBooking(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 999},
+			Chat: &tgbotapi.Chat{ID: 999},
+		},
+	})
 	assert.Len(t, mocks.tg.sentMessages, 0)
 
 	// Test handleManagerItemSelection error cases
-	b.handleManagerItemSelection(ctx, tgbotapi.Update{CallbackQuery: &tgbotapi.CallbackQuery{Data: "manager_select_item:invalid", From: &tgbotapi.User{ID: managerID}, Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: managerID}}}})
-	b.handleManagerItemSelection(ctx, tgbotapi.Update{CallbackQuery: &tgbotapi.CallbackQuery{Data: "manager_select_item:999", From: &tgbotapi.User{ID: managerID}, Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: managerID}}}})
+	b.handleManagerItemSelection(ctx, &tgbotapi.Update{
+		CallbackQuery: &tgbotapi.CallbackQuery{
+			Data: "manager_select_item:invalid",
+			From: &tgbotapi.User{ID: managerID},
+			Message: &tgbotapi.Message{
+				Chat: &tgbotapi.Chat{ID: managerID},
+			},
+		},
+	})
+	b.handleManagerItemSelection(ctx, &tgbotapi.Update{
+		CallbackQuery: &tgbotapi.CallbackQuery{
+			Data: "manager_select_item:999",
+			From: &tgbotapi.User{ID: managerID},
+			Message: &tgbotapi.Message{
+				Chat: &tgbotapi.Chat{ID: managerID},
+			},
+		},
+	})
 
 	// Test handleManagerSingleDate error cases
 	state := &models.UserState{UserID: managerID}
-	b.handleManagerSingleDate(ctx, tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: managerID}, From: &tgbotapi.User{ID: managerID}}}, "invalid date", state)
+	b.handleManagerSingleDate(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: managerID},
+			From: &tgbotapi.User{ID: managerID},
+		},
+	}, "invalid date", state)
 
 	// Test handleManagerEndDate edge cases
 	state.TempData = map[string]interface{}{"start_date": time.Now()}
-	b.handleManagerEndDate(ctx, tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: managerID}, From: &tgbotapi.User{ID: managerID}}}, time.Now().AddDate(0, 0, -1).Format("02.01.2006"), state)
-	b.handleManagerEndDate(ctx, tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: managerID}, From: &tgbotapi.User{ID: managerID}}}, time.Now().AddDate(0, 0, 40).Format("02.01.2006"), state)
+	b.handleManagerEndDate(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: managerID},
+			From: &tgbotapi.User{ID: managerID},
+		},
+	}, time.Now().AddDate(0, 0, -1).Format("02.01.2006"), state)
+	b.handleManagerEndDate(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: managerID},
+			From: &tgbotapi.User{ID: managerID},
+		},
+	}, time.Now().AddDate(0, 0, 40).Format("02.01.2006"), state)
 
 	// Test notifyManagers
-	b.notifyManagers(models.Booking{ID: 1, ItemName: "Item 1", Date: time.Now()})
+	b.notifyManagers(&models.Booking{ID: 1, ItemName: "Item 1", Date: time.Now()})
 	assert.True(t, len(mocks.tg.sentMessages) > 0)
 }
 
@@ -1988,34 +1976,65 @@ func TestUtilsMoreCoverage(t *testing.T) {
 	ctx := context.Background()
 
 	// Test showAvailableItems
-	b.showAvailableItems(ctx, tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: 123}}})
+	b.showAvailableItems(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: 123}},
+	})
 	assert.True(t, len(mocks.tg.getSentMessages()) > 0)
 
 	// Test handleSpecificDateInput
 	b.setUserState(ctx, 123, models.StateWaitingSpecificDate, map[string]interface{}{"item_id": int64(1)})
-	b.handleSpecificDateInput(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}}}, time.Now().Format("02.01.2006"))
+	b.handleSpecificDateInput(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123},
+		},
+	}, time.Now().Format("02.01.2006"))
 	assert.True(t, len(mocks.tg.getSentMessages()) > 1)
 
 	// Test showMonthScheduleForItem
-	b.showMonthScheduleForItem(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}}})
+	b.showMonthScheduleForItem(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123},
+		},
+	})
 	assert.True(t, len(mocks.tg.getSentMessages()) > 2)
 
 	// Test restoreStateOrRestart failures
-	b.restoreStateOrRestart(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 999}, Chat: &tgbotapi.Chat{ID: 999}}}, "missing_field")
+	b.restoreStateOrRestart(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 999}, Chat: &tgbotapi.Chat{ID: 999},
+		},
+	}, "missing_field")
 
 	// Test handleCustomInput back buttons
 	b.setUserState(ctx, 123, models.StateEnterName, map[string]interface{}{"item_id": int64(1)})
-	b.handleCustomInput(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}, Text: "⬅️ Назад"}}, b.getUserState(ctx, 123))
+	b.handleCustomInput(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}, Text: "⬅️ Назад",
+		},
+	}, b.getUserState(ctx, 123))
 
 	b.setUserState(ctx, 123, models.StatePhoneNumber, map[string]interface{}{"item_id": int64(1)})
-	b.handleCustomInput(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}, Text: "⬅️ Назад"}}, b.getUserState(ctx, 123))
+	b.handleCustomInput(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}, Text: "⬅️ Назад",
+		},
+	}, b.getUserState(ctx, 123))
 
 	b.setUserState(ctx, 123, models.StateWaitingDate, map[string]interface{}{"item_id": int64(1)})
-	b.handleCustomInput(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}, Text: "⬅️ Назад"}}, b.getUserState(ctx, 123))
+	b.handleCustomInput(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}, Text: "⬅️ Назад",
+		},
+	}, b.getUserState(ctx, 123))
 
 	// Test handleContactReceived
 	b.setUserState(ctx, 123, models.StatePhoneNumber, map[string]interface{}{"item_id": int64(1), "date": time.Now()})
-	b.handleContactReceived(ctx, tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}, Contact: &tgbotapi.Contact{PhoneNumber: "1234567890"}}})
+	b.handleContactReceived(ctx, &tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123},
+			Contact: &tgbotapi.Contact{PhoneNumber: "1234567890"},
+		},
+	})
 }
 
 func TestPagination(t *testing.T) {
@@ -2035,7 +2054,7 @@ func TestPagination(t *testing.T) {
 		ShowCapacity: true,
 	}
 
-	b.renderPaginatedItems(params)
+	b.renderPaginatedItems(&params)
 	assert.True(t, len(mocks.tg.getSentMessages()) > 0)
 
 	// Test renderPaginatedBookings
@@ -2046,7 +2065,7 @@ func TestPagination(t *testing.T) {
 
 	params.Title = "Test Bookings"
 	params.ItemPrefix = "booking_"
-	b.renderPaginatedBookings(params, bookings)
+	b.renderPaginatedBookings(&params, bookings)
 	assert.True(t, len(mocks.tg.getSentMessages()) > 1)
 }
 
@@ -2094,7 +2113,7 @@ func TestUserHandlersErrors(t *testing.T) {
 			From: &tgbotapi.User{ID: 123, UserName: "testuser"},
 		},
 	}
-	b.handleStartWithUserTracking(ctx, update)
+	b.handleStartWithUserTracking(ctx, &update)
 	// Should not panic despite error
 
 	// Test updateUserActivity with error

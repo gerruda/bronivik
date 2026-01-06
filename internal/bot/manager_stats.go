@@ -15,7 +15,7 @@ import (
 )
 
 // getUserStats показывает статистику менеджеру
-func (b *Bot) getUserStats(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) getUserStats(ctx context.Context, update *tgbotapi.Update) {
 	if !b.isManager(update.Message.From.ID) {
 		return
 	}
@@ -99,7 +99,9 @@ func (b *Bot) getUserStats(ctx context.Context, update tgbotapi.Update) {
 	)
 	msg.ReplyMarkup = &keyboard
 
-	b.tgService.Send(msg)
+	if _, err := b.tgService.Send(msg); err != nil {
+		b.logger.Error().Err(err).Msg("Failed to send message in getUserStats")
+	}
 }
 
 // bookingSummary агрегирует заявки за период в компактный блок: всего, статусы, топ-товары.
@@ -123,7 +125,7 @@ func (b *Bot) bookingSummary(ctx context.Context, startDate, endDate time.Time) 
 	}
 
 	statusOrder := []string{models.StatusPending, models.StatusConfirmed, models.StatusChanged, models.StatusCompleted, models.StatusCanceled}
-	var statusParts []string
+	statusParts := make([]string, 0, len(statusOrder))
 	for _, st := range statusOrder {
 		if c := statusCount[st]; c > 0 {
 			statusParts = append(statusParts, fmt.Sprintf("%s:%d", st, c))
@@ -134,7 +136,7 @@ func (b *Bot) bookingSummary(ctx context.Context, startDate, endDate time.Time) 
 		name  string
 		count int
 	}
-	var items []kv
+	items := make([]kv, 0, len(itemCount))
 	for name, c := range itemCount {
 		items = append(items, kv{name: name, count: c})
 	}
@@ -147,7 +149,7 @@ func (b *Bot) bookingSummary(ctx context.Context, startDate, endDate time.Time) 
 	if len(items) > 3 {
 		items = items[:3]
 	}
-	var itemParts []string
+	itemParts := make([]string, 0, 3)
 	for _, it := range items {
 		itemParts = append(itemParts, fmt.Sprintf("%s:%d", it.name, it.count))
 	}
@@ -160,7 +162,7 @@ func (b *Bot) bookingSummary(ctx context.Context, startDate, endDate time.Time) 
 }
 
 // handleExportUsers обработка экспорта пользователей
-func (b *Bot) handleExportUsers(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleExportUsers(ctx context.Context, update *tgbotapi.Update) {
 	callback := update.CallbackQuery
 	if callback == nil || !b.isManager(callback.From.ID) {
 		return
@@ -173,13 +175,7 @@ func (b *Bot) handleExportUsers(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	// Convert to slice of pointers for export function
-	userPointers := make([]*models.User, len(users))
-	for i := range users {
-		userPointers[i] = &users[i]
-	}
-
-	filePath, err := b.exportUsersToExcel(ctx, userPointers)
+	filePath, err := b.exportUsersToExcel(ctx, users)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Error exporting users to Excel")
 		b.sendMessage(callback.Message.Chat.ID, "Ошибка при создании файла экспорта")

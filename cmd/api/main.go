@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,106 +27,45 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Fatal error: %v", err)
 	}
 }
 
 func run() error {
-	// Загрузка конфигурации
-	configPath := os.Getenv("CONFIG_PATH")
-	if configPath == "" {
-		configPath = "configs/config.yaml"
-	}
-
-	cfg, err := config.Load(configPath)
+	cfg, logger, closer, err := loadConfigAndLogger()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
-
-	baseLogger, closer, err := logging.New(cfg.Logging, cfg.App)
-	if err != nil {
-		return fmt.Errorf("init logger: %w", err)
+		return err
 	}
 	if closer != nil {
-		defer (func() {
-			_ = closer.Close()
-		})()
+		defer (func() { _ = closer.Close() })()
 	}
-	logger := baseLogger.With().Str("component", "api-main").Logger()
 
-	// Загрузка позиций из отдельного файла
-	itemsPath := os.Getenv("ITEMS_PATH")
-	if itemsPath == "" {
-		itemsPath = "configs/items.yaml"
-	}
-	itemsData, err := os.ReadFile(itemsPath)
+	items, err := loadItems(&logger)
 	if err != nil {
-		logger.Error().Err(err).Str("items_path", itemsPath).Msg("read items")
 		return err
 	}
 
-	var itemsConfig struct {
-		Items []models.Item `yaml:"items"`
-	}
-	if errUnmarshal := yaml.Unmarshal(itemsData, &itemsConfig); errUnmarshal != nil {
-		logger.Error().Err(errUnmarshal).Str("items_path", itemsPath).Msg("parse items")
-		return errUnmarshal
-	}
-
-	// Инициализация базы данных
-	db, errDB := database.NewDB(cfg.Database.Path, &logger)
-	if errDB != nil {
-		logger.Error().Err(errDB).Str("db_path", cfg.Database.Path).Msg("init database")
-		return errDB
+	db, err := initDatabase(cfg, items, &logger)
+	if err != nil {
+		return err
 	}
 	defer db.Close()
-
-	// Устанавливаем items в базу данных
-	db.SetItems(itemsConfig.Items)
 
 	if !cfg.API.Enabled {
 		logger.Warn().Msg("API is disabled in config, but starting API application. Check your config.")
 	}
 
-	// Инициализация Redis (опционально для health checks)
-	var redisClient *redis.Client
-	if cfg.Redis.Address != "" {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:     cfg.Redis.Address,
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.DB,
-			PoolSize: cfg.Redis.PoolSize,
-		})
-		if _, errPing := redisClient.Ping(context.Background()).Result(); errPing != nil {
-			logger.Warn().Err(errPing).Msg("redis connection failed, continuing without redis")
-			redisClient = nil
-		} else {
-			defer redisClient.Close()
-			logger.Info().Str("addr", cfg.Redis.Address).Msg("redis connected")
-		}
+	redisClient := initRedis(cfg, &logger)
+	if redisClient != nil {
+		defer redisClient.Close()
 	}
 
-	// Инициализация Google Sheets (опционально для health checks)
-	var sheetsService *google.SheetsService
-	if cfg.Google.GoogleCredentialsFile != "" && cfg.Google.BookingSpreadSheetID != "" {
-		sheetsService, err = google.NewSimpleSheetsService(
-			cfg.Google.GoogleCredentialsFile,
-			cfg.Google.UsersSpreadSheetID,
-			cfg.Google.BookingSpreadSheetID,
-		)
-		if err != nil {
-			logger.Warn().Err(err).Msg("google sheets init failed, continuing without sheets")
-			sheetsService = nil
-		} else {
-			logger.Info().Msg("google sheets connected")
-		}
-	}
+	sheetsService := initGoogleSheets(cfg, &logger)
 
-	grpcServer, errGRPC := api.NewGRPCServer(&cfg.API, db, &logger)
-	if errGRPC != nil {
-		logger.Error().Err(errGRPC).Msg("create grpc server")
-		return errGRPC
+	grpcServer, err := api.NewGRPCServer(&cfg.API, db, &logger)
+	if err != nil {
+		logger.Error().Err(err).Msg("create grpc server")
+		return err
 	}
 
 	httpServer := api.NewHTTPServer(&cfg.API, db, redisClient, sheetsService, &logger)
@@ -132,17 +73,125 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if cfg.Monitoring.PrometheusEnabled {
-		metrics.Register()
-		if cfg.Monitoring.PrometheusPort == 0 {
-			cfg.Monitoring.PrometheusPort = 9090
-		}
-		go startMetricsServer(ctx, cfg.Monitoring.PrometheusPort, &logger)
+	startMetrics(ctx, cfg, &logger)
+
+	return startServers(ctx, grpcServer, httpServer, cfg, &logger)
+}
+
+func loadConfigAndLogger() (*config.Config, zerolog.Logger, io.Closer, error) {
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "configs/config.yaml"
 	}
 
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, zerolog.Logger{}, nil, fmt.Errorf("load config: %w", err)
+	}
+
+	baseLogger, closer, err := logging.New(cfg.Logging, cfg.App)
+	if err != nil {
+		return nil, zerolog.Logger{}, nil, fmt.Errorf("init logger: %w", err)
+	}
+	logger := baseLogger.With().Str("component", "api-main").Logger()
+
+	return cfg, logger, closer, nil
+}
+
+func loadItems(logger *zerolog.Logger) ([]models.Item, error) {
+	itemsPath := os.Getenv("ITEMS_PATH")
+	if itemsPath == "" {
+		itemsPath = "configs/items.yaml"
+	}
+	itemsData, err := os.ReadFile(itemsPath)
+	if err != nil {
+		logger.Error().Err(err).Str("items_path", itemsPath).Msg("read items")
+		return nil, err
+	}
+
+	var itemsConfig struct {
+		Items []models.Item `yaml:"items"`
+	}
+	if err := yaml.Unmarshal(itemsData, &itemsConfig); err != nil {
+		logger.Error().Err(err).Str("items_path", itemsPath).Msg("parse items")
+		return nil, err
+	}
+
+	return itemsConfig.Items, nil
+}
+
+func initDatabase(cfg *config.Config, items []models.Item, logger *zerolog.Logger) (*database.DB, error) {
+	db, err := database.NewDB(cfg.Database.Path, logger)
+	if err != nil {
+		logger.Error().Err(err).Str("db_path", cfg.Database.Path).Msg("init database")
+		return nil, err
+	}
+
+	itemPointers := make([]*models.Item, len(items))
+	for i := range items {
+		itemPointers[i] = &items[i]
+	}
+	db.SetItems(itemPointers)
+	return db, nil
+}
+
+func initRedis(cfg *config.Config, logger *zerolog.Logger) *redis.Client {
+	if cfg.Redis.Address == "" {
+		return nil
+	}
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Address,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+		PoolSize: cfg.Redis.PoolSize,
+	})
+
+	if _, err := redisClient.Ping(context.Background()).Result(); err != nil {
+		logger.Warn().Err(err).Msg("redis connection failed, continuing without redis")
+		return nil
+	}
+
+	logger.Info().Str("addr", cfg.Redis.Address).Msg("redis connected")
+	return redisClient
+}
+
+func initGoogleSheets(cfg *config.Config, logger *zerolog.Logger) *google.SheetsService {
+	if cfg.Google.GoogleCredentialsFile == "" || cfg.Google.BookingSpreadSheetID == "" {
+		return nil
+	}
+
+	sheetsService, err := google.NewSimpleSheetsService(
+		cfg.Google.GoogleCredentialsFile,
+		cfg.Google.UsersSpreadSheetID,
+		cfg.Google.BookingSpreadSheetID,
+	)
+	if err != nil {
+		logger.Warn().Err(err).Msg("google sheets init failed, continuing without sheets")
+		return nil
+	}
+
+	logger.Info().Msg("google sheets connected")
+	return sheetsService
+}
+
+func startMetrics(ctx context.Context, cfg *config.Config, logger *zerolog.Logger) {
+	if !cfg.Monitoring.PrometheusEnabled {
+		return
+	}
+
+	metrics.Register()
+	port := cfg.Monitoring.PrometheusPort
+	if port == 0 {
+		port = 9090
+	}
+	go startMetricsServer(ctx, port, logger)
+}
+
+func startServers(ctx context.Context, grpcServer *api.GRPCServer, httpServer *api.HTTPServer, cfg *config.Config, logger *zerolog.Logger) error {
 	go func() {
-		if errServe := grpcServer.Serve(); errServe != nil {
-			logger.Error().Err(errServe).Msg("grpc server stopped")
+		if err := grpcServer.Serve(); err != nil {
+			logger.Error().Err(err).Msg("grpc server stopped")
 		}
 	}()
 
@@ -150,8 +199,8 @@ func run() error {
 		if !cfg.API.HTTP.Enabled {
 			return
 		}
-		if errStart := httpServer.Start(); errStart != nil {
-			logger.Error().Err(errStart).Msg("http server stopped")
+		if err := httpServer.Start(); err != nil {
+			logger.Error().Err(err).Msg("http server stopped")
 		}
 	}()
 
@@ -162,11 +211,14 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	grpcServer.Shutdown(shutdownCtx)
 	_ = httpServer.Shutdown(shutdownCtx)
+
 	logger.Info().Msg("API server stopped")
 	return nil
 }
+
 
 func startMetricsServer(ctx context.Context, port int, logger *zerolog.Logger) {
 	mux := http.NewServeMux()

@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func (b *Bot) handleMessage(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleMessage(ctx context.Context, update *tgbotapi.Update) {
 	userID := update.Message.From.ID
 	text := update.Message.Text
 	l := zerolog.Ctx(ctx)
@@ -33,89 +33,120 @@ func (b *Bot) handleMessage(ctx context.Context, update tgbotapi.Update) {
 		return
 	}
 
-	if b.isManager(userID) {
-		handled := b.handleManagerCommand(ctx, update)
-		if handled {
-			return // Если команда менеджера обработана, выходим
-		}
+	if b.isManager(userID) && b.handleManagerCommand(ctx, update) {
+		return
 	}
 
 	state := b.getUserState(ctx, userID)
 
 	// Обработка общих кнопок "Назад" и "Отмена"
-	if text == "❌ Отмена" || text == "⬅️ Назад" {
+	if text == btnCancel || text == btnBack {
 		b.handleCustomInput(ctx, update, state)
 		return
 	}
 
+	if b.handleUserCommands(ctx, update, state) {
+		return
+	}
+
+	if state != nil && b.handleUserStateSteps(ctx, update, text, state) {
+		return
+	}
+
+	b.handleCustomInput(ctx, update, state)
+}
+
+// handleUserCommands обрабатывает основные команды пользователя
+func (b *Bot) handleUserCommands(ctx context.Context, update *tgbotapi.Update, state *models.UserState) bool {
+	text := update.Message.Text
+
 	switch {
-	case text == "/start" || strings.ToLower(text) == "сброс" || strings.ToLower(text) == "reset":
+	case text == "/start" || strings.EqualFold(text, "сброс") || strings.EqualFold(text, "reset"):
 		b.clearUserState(ctx, update.Message.From.ID)
 		b.handleStartWithUserTracking(ctx, update)
+		return true
 
-	case text == "📞 Контакты менеджеров":
+	case text == btnManagerContacts:
 		b.showManagerContacts(ctx, update)
+		return true
 
-	case text == "📊 Мои заявки":
+	case text == btnMyBookings:
 		b.showUserBookings(ctx, update)
+		return true
 
-	case text == "💼 Ассортимент":
+	case text == btnAvailableItems:
 		b.showAvailableItems(ctx, update)
+		return true
 
-	case text == "📅 Посмотреть расписание":
+	case text == btnViewSchedule:
 		b.handleViewSchedule(ctx, update)
+		return true
 
-	case text == "📋 СОЗДАТЬ ЗАЯВКУ":
+	case text == btnCreateBooking:
 		b.handleSelectItem(ctx, update)
+		return true
 
-	case text == "📅 30 дней":
-		// Проверяем, есть ли выбранный аппарат для расписания
+	case text == btnMonthSchedule:
 		if state != nil && state.TempData["item_id"] != nil {
 			b.showMonthScheduleForItem(ctx, update)
 		} else {
-			// Если аппарат не выбран, просим выбрать сначала
 			b.sendMessage(update.Message.Chat.ID, "Сначала выберите аппарат для просмотра расписания")
 			b.handleViewSchedule(ctx, update)
 		}
+		return true
 
-	case text == "🗓 Выбрать дату":
-		// Проверяем, есть ли выбранный аппарат для расписания
+	case text == btnPickDate:
 		if state != nil && state.TempData["item_id"] != nil {
 			b.requestSpecificDate(ctx, update)
 		} else {
 			b.sendMessage(update.Message.Chat.ID, "Сначала выберите аппарат для просмотра расписания")
 			b.handleViewSchedule(ctx, update)
 		}
+		return true
 
-	case text == "⬅️ Назад к выбору аппарата":
+	case text == btnBackToItems:
 		b.handleViewSchedule(ctx, update)
+		return true
 
-	case text == "📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ":
+	case text == btnCreateForItem:
 		if state != nil && state.TempData["item_id"] != nil {
 			itemID := state.GetInt64("item_id")
 			b.handleDateSelection(ctx, update, itemID)
 		}
+		return true
+	}
 
-	case state != nil && state.CurrentStep == models.StateEnterName:
+	return false
+}
+
+// handleUserStateSteps обрабатывает ввод пользователя в зависимости от текущего шага
+func (b *Bot) handleUserStateSteps(ctx context.Context, update *tgbotapi.Update, text string, state *models.UserState) bool {
+	userID := update.Message.From.ID
+
+	switch state.CurrentStep {
+	case models.StateEnterName:
 		state.TempData["user_name"] = b.sanitizeInput(text)
 		b.setUserState(ctx, userID, models.StatePhoneNumber, state.TempData)
 		b.handlePhoneRequest(ctx, update)
+		return true
 
-	case state != nil && state.CurrentStep == models.StatePhoneNumber:
+	case models.StatePhoneNumber:
 		b.handlePhoneReceived(ctx, update, text)
+		return true
 
-	case state != nil && state.CurrentStep == models.StateWaitingSpecificDate:
+	case models.StateWaitingSpecificDate:
 		b.handleSpecificDateInput(ctx, update, text)
+		return true
 
-	case state != nil && state.CurrentStep == models.StateWaitingDate:
+	case models.StateWaitingDate:
 		b.handleDateInput(ctx, update, text, state)
-
-	default:
-		b.handleCustomInput(ctx, update, state)
+		return true
 	}
+
+	return false
 }
 
-func (b *Bot) handleStartWithUserTracking(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleStartWithUserTracking(ctx context.Context, update *tgbotapi.Update) {
 	user := &models.User{
 		TelegramID:   update.Message.From.ID,
 		Username:     update.Message.From.UserName,

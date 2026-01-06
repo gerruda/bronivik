@@ -37,7 +37,7 @@ var (
 func NewDB(path string, logger *zerolog.Logger) (*DB, error) {
 	// Создаем директорию для БД, если её нет
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 

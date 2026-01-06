@@ -36,133 +36,33 @@ func main() {
 }
 
 func run() error {
-	// Загрузка конфигурации
-	configPath := os.Getenv("CONFIG_PATH")
-	if configPath == "" {
-		configPath = "configs/config.yaml"
-	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return err
-	}
-
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return err
-	}
-
-	// Инициализация логгера
-	baseLogger, closer, err := logging.New(cfg.Logging, cfg.App)
+	cfg, items, logger, closer, err := loadConfigAndLogger()
 	if err != nil {
 		return err
 	}
 	if closer != nil {
-		defer (func(c io.Closer) {
-			_ = c.Close()
-		})(closer)
-	}
-	logger := baseLogger.With().Str("component", "bot-main").Logger()
-
-	if _, errStat := os.Stat("configs/items.yaml"); os.IsNotExist(errStat) {
-		logger.Error().Msgf("Config file does not exist: %s", "configs/items.yaml")
-		return errStat
+		defer (func(c io.Closer) { _ = c.Close() })(closer)
 	}
 
-	// Загрузка позиций из отдельного файла
-	itemsData, errRead := os.ReadFile("configs/items.yaml")
-	if errRead != nil {
-		logger.Error().Err(errRead).Msg("Ошибка чтения items.yaml")
-		return errRead
+	if err := prepareDirectories(cfg, &logger); err != nil {
+		return err
 	}
 
-	var itemsConfig struct {
-		Items []models.Item `yaml:"items"`
-	}
-	if errUnmarshal := yaml.Unmarshal(itemsData, &itemsConfig); errUnmarshal != nil {
-		logger.Error().Err(errUnmarshal).Msg("Ошибка парсинга items.yaml")
-		return errUnmarshal
-	}
-
-	if errValidate := config.ValidateItems(itemsConfig.Items); errValidate != nil {
-		logger.Error().Err(errValidate).Msg("Items validation failed")
-		return errValidate
-	}
-
-	// Создаем необходимые директории
-	if cfg == nil {
-		return os.ErrInvalid
-	}
-	dbPath := cfg.Database.Path
-	if errMkdirDB := os.MkdirAll(filepath.Dir(dbPath), 0o755); errMkdirDB != nil {
-		logger.Error().Err(errMkdirDB).Msg("Ошибка создания директории для базы данных")
-		return errMkdirDB
-	}
-
-	exportPath := cfg.Exports.Path
-	if errMkdirExport := os.MkdirAll(exportPath, 0o755); errMkdirExport != nil {
-		logger.Error().Err(errMkdirExport).Msg("Ошибка создания директории для экспорта")
-		return errMkdirExport
-	}
-
-	// Инициализация базы данных
-	db, errDB := database.NewDB(dbPath, &logger)
-	if errDB != nil {
-		logger.Error().Err(errDB).Msg("Ошибка инициализации базы данных")
-		return errDB
+	db, err := initDatabase(cfg, items, &logger)
+	if err != nil {
+		return err
 	}
 	defer db.Close()
-
-	// Синхронизируем items с базой данных
-	if errSync := db.SyncItems(context.Background(), itemsConfig.Items); errSync != nil {
-		logger.Error().Err(errSync).Msg("Ошибка синхронизации позиций")
-	}
-
-	if cfg.Telegram.BotToken == "YOUR_BOT_TOKEN_HERE" {
-		logger.Error().Msg("Задайте токен бота в config.yaml")
-		return os.ErrInvalid
-	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Инициализация Google Sheets через API Key
-	var sheetsService *google.SheetsService
-	if cfg.Google.GoogleCredentialsFile == "" || cfg.Google.UsersSpreadSheetID == "" || cfg.Google.BookingSpreadSheetID == "" {
-		logger.Error().Msg("Нехватает переменных для подключения к Гуглу")
-		return os.ErrInvalid
+	sheetsService, err := initGoogleSheets(ctx, cfg, &logger)
+	if err != nil {
+		return err
 	}
 
-	sheetsSvc, errSvc := google.NewSimpleSheetsService(
-		cfg.Google.GoogleCredentialsFile,
-		cfg.Google.UsersSpreadSheetID,
-		cfg.Google.BookingSpreadSheetID,
-	)
-	if errSvc != nil {
-		logger.Warn().Err(errSvc).Msg("Failed to initialize Google Sheets service")
-	}
-
-	// Тестируем подключение
-	if errConn := sheetsSvc.TestConnection(ctx); errConn != nil {
-		logger.Error().Err(errConn).Msg("Google Sheets connection test failed")
-		return errConn
-	}
-	sheetsService = sheetsSvc
-	logger.Info().Msg("Google Sheets service initialized successfully")
-
-	// Инициализация Redis
-	var redisClient *redis.Client
-	if cfg.Redis.Address != "" {
-		redisClient = repository.NewRedisClient(cfg.Redis)
-		if errPing := repository.Ping(ctx, redisClient); errPing != nil {
-			logger.Warn().Err(errPing).Msg("Redis unavailable")
-		}
-	}
-
-	// Инициализация сервиса состояний
-	primaryRepo := repository.NewRedisStateRepository(redisClient, time.Duration(models.DefaultRedisTTL)*time.Second)
-	fallbackRepo := repository.NewMemoryStateRepository(time.Duration(models.DefaultRedisTTL) * time.Second)
-	stateRepo := repository.NewFailoverStateRepository(primaryRepo, fallbackRepo, &logger)
-	stateService := service.NewStateService(stateRepo, &logger)
+	redisClient, stateService := initStateService(ctx, cfg, &logger)
 
 	// Запускаем воркер синхронизации Google Sheets
 	var sheetsWorker *worker.SheetsWorker
@@ -181,12 +81,11 @@ func run() error {
 	itemService := service.NewItemService(db, &logger)
 	metrics := bot.NewMetrics()
 
-	// Инициализация API сервера
 	if cfg.API.Enabled {
 		apiServer := api.NewHTTPServer(&cfg.API, db, redisClient, sheetsService, &logger)
 		go func() {
-			if errApi := apiServer.Start(); errApi != nil {
-				logger.Error().Err(errApi).Msg("API server error")
+			if err := apiServer.Start(); err != nil {
+				logger.Error().Err(err).Msg("API server error")
 			}
 		}()
 		defer func() {
@@ -194,38 +93,154 @@ func run() error {
 		}()
 	}
 
-	// Инициализация сервиса бэкапов
 	if cfg.Backup.Enabled {
 		backupService := database.NewBackupService(cfg.Database.Path, cfg.Backup, &logger)
 		go backupService.Start(ctx)
 	}
 
-	// Создание и запуск бота
-	botAPI, errBotAPI := tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
-	if errBotAPI != nil {
-		logger.Error().Err(errBotAPI).Msg("Ошибка создания BotAPI")
-		return errBotAPI
+	return startBot(ctx, cfg, stateService, sheetsService, sheetsWorker, eventBus, bookingService, userService, itemService, metrics, &logger)
+}
+
+func loadConfigAndLogger() (*config.Config, []models.Item, zerolog.Logger, io.Closer, error) {
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "configs/config.yaml"
 	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, nil, zerolog.Logger{}, nil, err
+	}
+
+	baseLogger, closer, err := logging.New(cfg.Logging, cfg.App)
+	if err != nil {
+		return nil, nil, zerolog.Logger{}, nil, err
+	}
+	logger := baseLogger.With().Str("component", "bot-main").Logger()
+
+	itemsPath := os.Getenv("ITEMS_PATH")
+	if itemsPath == "" {
+		itemsPath = "configs/items.yaml"
+	}
+	itemsData, err := os.ReadFile(itemsPath)
+	if err != nil {
+		logger.Error().Err(err).Msgf("Ошибка чтения %s", itemsPath)
+		return nil, nil, zerolog.Logger{}, closer, err
+	}
+
+	var itemsConfig struct {
+		Items []models.Item `yaml:"items"`
+	}
+	if err := yaml.Unmarshal(itemsData, &itemsConfig); err != nil {
+		logger.Error().Err(err).Msg("Ошибка парсинга items.yaml")
+		return nil, nil, zerolog.Logger{}, closer, err
+	}
+
+	if err := config.ValidateItems(itemsConfig.Items); err != nil {
+		logger.Error().Err(err).Msg("Items validation failed")
+		return nil, nil, zerolog.Logger{}, closer, err
+	}
+
+	return cfg, itemsConfig.Items, logger, closer, nil
+}
+
+func prepareDirectories(cfg *config.Config, logger *zerolog.Logger) error {
+	if cfg == nil {
+		return os.ErrInvalid
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.Database.Path), 0o755); err != nil {
+		logger.Error().Err(err).Msg("Ошибка создания директории для базы данных")
+		return err
+	}
+	if err := os.MkdirAll(cfg.Exports.Path, 0o755); err != nil {
+		logger.Error().Err(err).Msg("Ошибка создания директории для экспорта")
+		return err
+	}
+	return nil
+}
+
+func initDatabase(cfg *config.Config, items []models.Item, logger *zerolog.Logger) (*database.DB, error) {
+	db, err := database.NewDB(cfg.Database.Path, logger)
+	if err != nil {
+		logger.Error().Err(err).Msg("Ошибка инициализации базы данных")
+		return nil, err
+	}
+
+	if err := db.SyncItems(context.Background(), items); err != nil {
+		logger.Error().Err(err).Msg("Ошибка синхронизации позиций")
+	}
+	return db, nil
+}
+
+func initGoogleSheets(ctx context.Context, cfg *config.Config, logger *zerolog.Logger) (*google.SheetsService, error) {
+	if cfg.Google.GoogleCredentialsFile == "" || cfg.Google.UsersSpreadSheetID == "" || cfg.Google.BookingSpreadSheetID == "" {
+		logger.Error().Msg("Нехватает переменных для подключения к Гуглу")
+		return nil, os.ErrInvalid
+	}
+
+	sheetsSvc, err := google.NewSimpleSheetsService(
+		cfg.Google.GoogleCredentialsFile,
+		cfg.Google.UsersSpreadSheetID,
+		cfg.Google.BookingSpreadSheetID,
+	)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize Google Sheets service")
+		return nil, err
+	}
+
+	if err := sheetsSvc.TestConnection(ctx); err != nil {
+		logger.Error().Err(err).Msg("Google Sheets connection test failed")
+		return nil, err
+	}
+
+	logger.Info().Msg("Google Sheets service initialized successfully")
+	return sheetsSvc, nil
+}
+
+func initStateService(ctx context.Context, cfg *config.Config, logger *zerolog.Logger) (*redis.Client, *service.StateService) {
+	var redisClient *redis.Client
+	if cfg.Redis.Address != "" {
+		redisClient = repository.NewRedisClient(cfg.Redis)
+		if errPing := repository.Ping(ctx, redisClient); errPing != nil {
+			logger.Warn().Err(errPing).Msg("Redis unavailable")
+		}
+	}
+
+	primaryRepo := repository.NewRedisStateRepository(redisClient, time.Duration(models.DefaultRedisTTL)*time.Second)
+	fallbackRepo := repository.NewMemoryStateRepository(time.Duration(models.DefaultRedisTTL) * time.Second)
+	stateRepo := repository.NewFailoverStateRepository(primaryRepo, fallbackRepo, logger)
+	return redisClient, service.NewStateService(stateRepo, logger)
+}
+
+func startBot(ctx context.Context, cfg *config.Config, stateService *service.StateService, sheetsService *google.SheetsService, sheetsWorker *worker.SheetsWorker, eventBus *events.EventBus, bookingService *service.BookingService, userService *service.UserService, itemService *service.ItemService, metrics *bot.Metrics, logger *zerolog.Logger) error {
+	if cfg.Telegram.BotToken == "YOUR_BOT_TOKEN_HERE" {
+		logger.Error().Msg("Задайте токен бота в config.yaml")
+		return os.ErrInvalid
+	}
+
+	botAPI, err := tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
+	if err != nil {
+		logger.Error().Err(err).Msg("Ошибка создания BotAPI")
+		return err
+	}
+
 	botWrapper := bot.NewBotWrapper(botAPI)
 	tgService := service.NewTelegramService(botWrapper)
 
-	telegramBot, errBot := bot.NewBot(tgService, cfg, stateService, sheetsService, sheetsWorker, eventBus, bookingService, userService, itemService, metrics, &logger)
-	if errBot != nil {
-		logger.Error().Err(errBot).Msg("Ошибка создания бота")
-		return errBot
+	telegramBot, err := bot.NewBot(tgService, cfg, stateService, sheetsService, sheetsWorker, eventBus, bookingService, userService, itemService, metrics, logger)
+	if err != nil {
+		logger.Error().Err(err).Msg("Ошибка создания бота")
+		return err
 	}
 
 	logger.Info().Msg("Бот запущен...")
-
-	// Запускаем напоминания
 	telegramBot.StartReminders(ctx)
-
-	// Запускаем бота (блокирующий вызов)
 	telegramBot.Start(ctx)
 
 	logger.Info().Msg("Shutdown complete.")
 	return nil
 }
+
 
 func subscribeBookingEvents(ctx context.Context, bus *events.EventBus, db *database.DB, sheetsWorker *worker.SheetsWorker, logger *zerolog.Logger) {
 	if bus == nil || sheetsWorker == nil || db == nil {

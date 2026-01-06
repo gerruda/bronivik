@@ -11,7 +11,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func (b *Bot) handleAddItemCommand(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleAddItemCommand(ctx context.Context, update *tgbotapi.Update) {
 	parts := strings.Fields(update.Message.Text)
 	if len(parts) < 3 {
 		b.sendMessage(update.Message.Chat.ID, "Использование: /add_item <название> <количество>")
@@ -31,10 +31,12 @@ func (b *Bot) handleAddItemCommand(ctx context.Context, update tgbotapi.Update) 
 		return
 	}
 
-	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("✅ Аппарат '%s' добавлен (кол-во: %d, порядок: %d)", item.Name, item.TotalQuantity, item.SortOrder))
+	b.sendMessage(update.Message.Chat.ID,
+		fmt.Sprintf("✅ Аппарат '%s' добавлен (кол-во: %d, порядок: %d)",
+			item.Name, item.TotalQuantity, item.SortOrder))
 }
 
-func (b *Bot) handleEditItemCommand(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleEditItemCommand(ctx context.Context, update *tgbotapi.Update) {
 	parts := strings.Fields(update.Message.Text)
 	if len(parts) < 3 {
 		b.sendMessage(update.Message.Chat.ID, "Использование: /edit_item <название> <новое_количество>")
@@ -63,7 +65,7 @@ func (b *Bot) handleEditItemCommand(ctx context.Context, update tgbotapi.Update)
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("✅ Аппарат '%s' обновлён (кол-во: %d)", current.Name, current.TotalQuantity))
 }
 
-func (b *Bot) handleListItemsCommand(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleListItemsCommand(ctx context.Context, update *tgbotapi.Update) {
 	items, err := b.itemService.GetActiveItems(ctx)
 	if err != nil {
 		b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Ошибка загрузки списка: %v", err))
@@ -84,7 +86,7 @@ func (b *Bot) handleListItemsCommand(ctx context.Context, update tgbotapi.Update
 	b.sendMessage(update.Message.Chat.ID, sb.String())
 }
 
-func (b *Bot) handleDisableItemCommand(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleDisableItemCommand(ctx context.Context, update *tgbotapi.Update) {
 	parts := strings.Fields(update.Message.Text)
 	if len(parts) < 2 {
 		b.sendMessage(update.Message.Chat.ID, "Использование: /disable_item <название>")
@@ -106,7 +108,7 @@ func (b *Bot) handleDisableItemCommand(ctx context.Context, update tgbotapi.Upda
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("🛑 Аппарат '%s' деактивирован", item.Name))
 }
 
-func (b *Bot) handleSetItemOrderCommand(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleSetItemOrderCommand(ctx context.Context, update *tgbotapi.Update) {
 	parts := strings.Fields(update.Message.Text)
 	if len(parts) < 3 {
 		b.sendMessage(update.Message.Chat.ID, "Использование: /set_item_order <название> <порядок>")
@@ -134,7 +136,7 @@ func (b *Bot) handleSetItemOrderCommand(ctx context.Context, update tgbotapi.Upd
 	b.sendMessage(update.Message.Chat.ID, fmt.Sprintf("↕️ Порядок '%s' установлен на %d", item.Name, order))
 }
 
-func (b *Bot) handleMoveItemCommand(ctx context.Context, update tgbotapi.Update, delta int64) {
+func (b *Bot) handleMoveItemCommand(ctx context.Context, update *tgbotapi.Update, delta int64) {
 	parts := strings.Fields(update.Message.Text)
 	if len(parts) < 2 {
 		b.sendMessage(update.Message.Chat.ID, "Использование: /move_item_up|/move_item_down <название>")
@@ -166,8 +168,10 @@ func (b *Bot) handleMoveItemCommand(ctx context.Context, update tgbotapi.Update,
 }
 
 // editManagerItemsPage редактирует страницу с аппаратами для менеджера
-func (b *Bot) editManagerItemsPage(update tgbotapi.Update, page int) {
+func (b *Bot) editManagerItemsPage(update *tgbotapi.Update, page int) {
 	callback := update.CallbackQuery
 	b.sendManagerItemsPage(context.Background(), callback.Message.Chat.ID, callback.Message.MessageID, page)
-	b.tgService.Send(tgbotapi.NewCallback(callback.ID, ""))
+	if _, err := b.tgService.Send(tgbotapi.NewCallback(callback.ID, "")); err != nil {
+		b.logger.Error().Err(err).Msg("Failed to send callback in editManagerItemsPage")
+	}
 }

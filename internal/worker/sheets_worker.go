@@ -45,7 +45,7 @@ type SheetsClient interface {
 	UpsertBooking(context.Context, *models.Booking) error
 	DeleteBookingRow(context.Context, int64) error
 	UpdateBookingStatus(context.Context, int64, string) error
-	UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]models.Booking, items []models.Item) error
+	UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error
 }
 
 type SheetsWorker struct {
@@ -131,7 +131,7 @@ func (w *SheetsWorker) EnqueueTask(ctx context.Context, taskType string, booking
 
 	// Try redis first for durability.
 	if w.redis != nil {
-		if err := w.pushRedis(ctx, syncTask); err != nil {
+		if err := w.pushRedis(ctx, &syncTask); err != nil {
 			w.logger.Warn().Err(err).Msg("sheets_worker: redis push failed, fallback to memory queue")
 		} else {
 			return nil
@@ -226,7 +226,7 @@ func (w *SheetsWorker) processTask(ctx context.Context, task *models.SyncTask) {
 		return
 	}
 
-	if err := w.handleSheetTask(ctx, task.TaskType, payload); err != nil {
+	if err := w.handleSheetTask(ctx, task.TaskType, &payload); err != nil {
 		w.retryOrFail(ctx, task, err)
 		return
 	}
@@ -236,7 +236,7 @@ func (w *SheetsWorker) processTask(ctx context.Context, task *models.SyncTask) {
 	}
 }
 
-func (w *SheetsWorker) handleSheetTask(ctx context.Context, taskType string, payload sheetTaskPayload) error {
+func (w *SheetsWorker) handleSheetTask(ctx context.Context, taskType string, payload *sheetTaskPayload) error {
 	switch taskType {
 	case TaskUpsert:
 		if payload.Booking == nil {
@@ -291,8 +291,8 @@ func (w *SheetsWorker) retryOrFail(ctx context.Context, task *models.SyncTask, c
 
 	nextDelay := w.retryPolicy.NextDelay(attempt)
 	nextTime := time.Now().Add(nextDelay)
-	if err := w.db.UpdateSyncTaskStatus(ctx, task.ID, "retry", cause.Error(), &nextTime); err != nil {
-		w.logger.Error().Err(err).Int64("task_id", task.ID).Msg("sheets_worker: mark retry")
+	if uerr := w.db.UpdateSyncTaskStatus(ctx, task.ID, "retry", cause.Error(), &nextTime); uerr != nil {
+		w.logger.Error().Err(uerr).Int64("task_id", task.ID).Msg("sheets_worker: mark retry")
 	}
 }
 
@@ -311,7 +311,7 @@ func (w *SheetsWorker) decodePayload(raw string) (sheetTaskPayload, error) {
 	return payload, nil
 }
 
-func (w *SheetsWorker) pushRedis(ctx context.Context, task models.SyncTask) error {
+func (w *SheetsWorker) pushRedis(ctx context.Context, task *models.SyncTask) error {
 	if w.redis == nil {
 		return errors.New("redis client is nil")
 	}
@@ -359,7 +359,7 @@ func (w *SheetsWorker) EnqueueSyncSchedule(ctx context.Context, startDate, endDa
 	}
 
 	if w.redis != nil {
-		if err := w.pushRedis(ctx, syncTask); err != nil {
+		if err := w.pushRedis(ctx, &syncTask); err != nil {
 			w.logger.Warn().Err(err).Msg("sheets_worker: redis push failed, fallback to memory queue")
 		} else {
 			return nil

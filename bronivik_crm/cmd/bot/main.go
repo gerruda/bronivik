@@ -78,7 +78,7 @@ func main() {
 	data = []byte(os.ExpandEnv(string(data)))
 
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err = yaml.Unmarshal(data, &cfg); err != nil {
 		logger.Fatal().Err(err).Msg("parse config error")
 	}
 	if cfg.Telegram.BotToken == "" || cfg.Telegram.BotToken == "YOUR_BOT_TOKEN_HERE" {
@@ -87,7 +87,7 @@ func main() {
 	if cfg.Database.Path == "" {
 		cfg.Database.Path = "data/bronivik_crm.db"
 	}
-	if err := os.MkdirAll(filepath.Dir(cfg.Database.Path), 0o755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(cfg.Database.Path), 0o755); err != nil {
 		logger.Fatal().Err(err).Msg("mkdir db dir error")
 	}
 
@@ -104,7 +104,7 @@ func main() {
 		client.UseRedisCache(rdb, time.Duration(cfg.API.CacheTTLSeconds)*time.Second)
 	}
 
-	rules := botRulesFromConfig(cfg)
+	rules := botRulesFromConfig(&cfg)
 	b, err := bot.New(cfg.Telegram.BotToken, client, db, cfg.Managers, rules, &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("create bot error")
@@ -130,7 +130,7 @@ func main() {
 	b.Start(ctx)
 }
 
-func botRulesFromConfig(cfg Config) bot.BookingRules {
+func botRulesFromConfig(cfg *Config) bot.BookingRules {
 	minAdvance := 60 * time.Minute
 	if cfg.Booking.MinAdvanceMinutes > 0 {
 		minAdvance = time.Duration(cfg.Booking.MinAdvanceMinutes) * time.Minute

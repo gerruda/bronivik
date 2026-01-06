@@ -8,6 +8,7 @@ import (
 	availabilityv1 "bronivik/internal/api/gen/availability/v1"
 	"bronivik/internal/database"
 	"bronivik/internal/models"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -15,12 +16,12 @@ import (
 type AvailabilityService struct {
 	availabilityv1.UnimplementedAvailabilityServiceServer
 	db          *database.DB
-	itemsByName map[string]models.Item
+	itemsByName map[string]*models.Item
 }
 
 func NewAvailabilityService(db *database.DB) *AvailabilityService {
 	items := db.GetItems()
-	idx := make(map[string]models.Item, len(items))
+	idx := make(map[string]*models.Item, len(items))
 	for _, it := range items {
 		idx[strings.ToLower(strings.TrimSpace(it.Name))] = it
 	}

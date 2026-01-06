@@ -60,7 +60,7 @@ func NewSimpleSheetsService(credentialsFile, usersSheetID, bookingsSheetID strin
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		service.WarmUpCache(ctx)
+		_ = service.WarmUpCache(ctx)
 	}()
 
 	// Periodic cache refresh
@@ -69,7 +69,7 @@ func NewSimpleSheetsService(credentialsFile, usersSheetID, bookingsSheetID strin
 		defer ticker.Stop()
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			service.WarmUpCache(ctx)
+			_ = service.WarmUpCache(ctx)
 			cancel()
 		}
 	}()
@@ -108,7 +108,7 @@ func (s *SheetsService) GetServiceAccountEmail(credentialsFile string) (string, 
 // UpdateUsersSheet обновляет таблицу пользователей
 func (s *SheetsService) UpdateUsersSheet(ctx context.Context, users []*models.User) error {
 	// Подготавливаем данные
-	var values [][]interface{}
+	values := make([][]interface{}, 0, len(users)+1)
 
 	// Заголовки
 	headers := []interface{}{"ID", "Telegram ID", "Username", "First Name", "Last Name", "Phone", "Is Manager", "Is Blacklisted", "Language Code", "Last Activity", "Created At"}
@@ -168,7 +168,7 @@ func (s *SheetsService) WarmUpCache(ctx context.Context) error {
 		case float64:
 			id = int64(v)
 		case string:
-			fmt.Sscanf(v, "%d", &id)
+			_, _ = fmt.Sscanf(v, "%d", &id)
 		}
 		if id > 0 {
 			s.rowCache[id] = i + 1
@@ -206,8 +206,7 @@ func (s *SheetsService) AppendBooking(ctx context.Context, booking *models.Booki
 	if err == nil && resp != nil && resp.Updates != nil {
 		// Parse row number from range like "Bookings!A10:J10"
 		var rowIdx int
-		_, err := fmt.Sscanf(resp.Updates.UpdatedRange, "Bookings!A%d", &rowIdx)
-		if err == nil && rowIdx > 0 {
+		if _, sErr := fmt.Sscanf(resp.Updates.UpdatedRange, "Bookings!A%d", &rowIdx); sErr == nil && rowIdx > 0 {
 			s.setCachedRow(booking.ID, rowIdx)
 		}
 	}
@@ -311,7 +310,7 @@ func (s *SheetsService) FindBookingRow(ctx context.Context, bookingID int64) (in
 		case float64:
 			id = int64(v)
 		case string:
-			fmt.Sscanf(v, "%d", &id)
+			_, _ = fmt.Sscanf(v, "%d", &id)
 		}
 
 		if id > 0 {
@@ -413,7 +412,7 @@ func (s *SheetsService) UpdateBookingsSheet(ctx context.Context, bookings []*mod
 }
 
 // UpdateScheduleSheet обновляет лист с расписанием бронирований в формате таблицы
-func (s *SheetsService) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]models.Booking, items []models.Item) error {
+func (s *SheetsService) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error {
 	sheetId, err := s.GetSheetIdByName(ctx, s.bookingsSheetID, "Бронирования")
 	if err != nil {
 		return fmt.Errorf("unable to get sheet ID: %v", err)
@@ -428,7 +427,7 @@ func (s *SheetsService) UpdateScheduleSheet(ctx context.Context, startDate, endD
 		return fmt.Errorf("invalid date range: startDate %s, endDate %s", startDate, endDate)
 	}
 
-	var data [][]interface{}
+	data := make([][]interface{}, 0, len(items)+5)
 	var formatRequests []*sheets.Request
 
 	// 1. Заголовок периода
@@ -521,10 +520,10 @@ func (s *SheetsService) getPeriodHeaderFormat(sheetId int64) *sheets.Request {
 	}
 }
 
-func (s *SheetsService) prepareDateHeaders(startDate, endDate time.Time) ([]interface{}, int) {
-	headerRow := []interface{}{""}
+func (s *SheetsService) prepareDateHeaders(startDate, endDate time.Time) (headerRow []interface{}, dateCols int) {
+	headerRow = []interface{}{""}
 	currentDate := startDate
-	dateCols := 0
+	dateCols = 0
 	for !currentDate.After(endDate) && dateCols < 100 {
 		headerRow = append(headerRow, currentDate.Format("02.01"))
 		dateCols++
@@ -537,7 +536,7 @@ func (s *SheetsService) prepareDateHeaders(startDate, endDate time.Time) ([]inte
 	return headerRow, dateCols
 }
 
-func (s *SheetsService) getDateHeadersFormat(sheetId int64, colCount int64) *sheets.Request {
+func (s *SheetsService) getDateHeadersFormat(sheetId, colCount int64) *sheets.Request {
 	return &sheets.Request{
 		RepeatCell: &sheets.RepeatCellRequest{
 			Range: &sheets.GridRange{
@@ -565,7 +564,7 @@ func (s *SheetsService) getDateHeadersFormat(sheetId int64, colCount int64) *she
 	}
 }
 
-func (s *SheetsService) prepareItemRowData(item models.Item, startDate time.Time, dateCols int, dailyBookings map[string][]models.Booking) ([]interface{}, []*sheets.CellData) {
+func (s *SheetsService) prepareItemRowData(item *models.Item, startDate time.Time, dateCols int, dailyBookings map[string][]*models.Booking) ([]interface{}, []*sheets.CellData) {
 	rowData := []interface{}{fmt.Sprintf("%s (%d)", item.Name, item.TotalQuantity)}
 	cellFormats := make([]*sheets.CellData, 0, dateCols)
 
@@ -574,8 +573,9 @@ func (s *SheetsService) prepareItemRowData(item models.Item, startDate time.Time
 		dateKey := currentDate.Format("2006-01-02")
 		bookings := dailyBookings[dateKey]
 
-		var itemBookings []models.Booking
-		for _, b := range bookings {
+		var itemBookings []*models.Booking
+		for i := range bookings {
+			b := bookings[i]
 			if b.ItemID == item.ID {
 				itemBookings = append(itemBookings, b)
 			}
@@ -596,7 +596,7 @@ func (s *SheetsService) prepareItemRowData(item models.Item, startDate time.Time
 	return rowData, cellFormats
 }
 
-func (s *SheetsService) formatScheduleCell(item models.Item, itemBookings []models.Booking) (string, *sheets.Color) {
+func (s *SheetsService) formatScheduleCell(item *models.Item, itemBookings []*models.Booking) (string, *sheets.Color) {
 	activeBookings := s.filterActiveBookings(itemBookings)
 	bookedCount := len(activeBookings)
 
@@ -775,7 +775,7 @@ func (s *SheetsService) ReplaceBookingsSheet(ctx context.Context, bookings []*mo
 	}
 
 	// Подготавливаем данные для записи
-	var values [][]interface{}
+	values := make([][]interface{}, 0, len(bookings))
 	for _, booking := range bookings {
 		row := []interface{}{
 			booking.ID,
@@ -815,9 +815,10 @@ func (s *SheetsService) ReplaceBookingsSheet(ctx context.Context, bookings []*mo
 }
 
 // filterActiveBookings фильтрует активные заявки (исключает отмененные)
-func (s *SheetsService) filterActiveBookings(bookings []models.Booking) []models.Booking {
-	var active []models.Booking
-	for _, booking := range bookings {
+func (s *SheetsService) filterActiveBookings(bookings []*models.Booking) []*models.Booking {
+	active := make([]*models.Booking, 0, len(bookings))
+	for i := range bookings {
+		booking := bookings[i]
 		if booking.Status != models.StatusCanceled {
 			active = append(active, booking)
 		}

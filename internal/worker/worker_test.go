@@ -163,7 +163,7 @@ func TestSheetsWorker_RedisErrors(t *testing.T) {
 
 	t.Run("NilRedis", func(t *testing.T) {
 		worker := NewSheetsWorker(db, sheets, nil, RetryPolicy{}, nil)
-		err := worker.pushRedis(context.Background(), models.SyncTask{})
+		err := worker.pushRedis(context.Background(), &models.SyncTask{})
 		if err == nil {
 			t.Errorf("expected error for nil redis")
 		}
@@ -180,7 +180,7 @@ func TestSheetsWorker_RedisErrors(t *testing.T) {
 		worker := NewSheetsWorker(db, sheets, rdb, RetryPolicy{}, nil)
 		s.Close()
 
-		err := worker.pushRedis(context.Background(), models.SyncTask{})
+		err := worker.pushRedis(context.Background(), &models.SyncTask{})
 		if err == nil {
 			t.Errorf("expected error for closed redis")
 		}
@@ -310,7 +310,7 @@ func TestSheetsWorker_HandleSheetTask(t *testing.T) {
 
 	t.Run("Upsert", func(t *testing.T) {
 		booking := &models.Booking{ID: 1, ItemName: "Test"}
-		err := worker.handleSheetTask(ctx, TaskUpsert, sheetTaskPayload{Booking: booking})
+		err := worker.handleSheetTask(ctx, TaskUpsert, &sheetTaskPayload{Booking: booking})
 		if err != nil {
 			t.Fatalf("handle: %v", err)
 		}
@@ -320,7 +320,7 @@ func TestSheetsWorker_HandleSheetTask(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, TaskDelete, sheetTaskPayload{BookingID: 123})
+		err := worker.handleSheetTask(ctx, TaskDelete, &sheetTaskPayload{BookingID: 123})
 		if err != nil {
 			t.Fatalf("handle: %v", err)
 		}
@@ -330,7 +330,7 @@ func TestSheetsWorker_HandleSheetTask(t *testing.T) {
 	})
 
 	t.Run("UpdateStatus", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, TaskUpdateStatus, sheetTaskPayload{BookingID: 123, Status: "confirmed"})
+		err := worker.handleSheetTask(ctx, TaskUpdateStatus, &sheetTaskPayload{BookingID: 123, Status: "confirmed"})
 		if err != nil {
 			t.Fatalf("handle: %v", err)
 		}
@@ -343,7 +343,7 @@ func TestSheetsWorker_HandleSheetTask(t *testing.T) {
 		// Create an item to satisfy GetActiveItems
 		db.CreateItem(ctx, &models.Item{Name: "Item1", TotalQuantity: 1})
 
-		err := worker.handleSheetTask(ctx, TaskSyncSchedule, sheetTaskPayload{
+		err := worker.handleSheetTask(ctx, TaskSyncSchedule, &sheetTaskPayload{
 			StartDate: time.Now(),
 			EndDate:   time.Now().Add(24 * time.Hour),
 		})
@@ -354,35 +354,35 @@ func TestSheetsWorker_HandleSheetTask(t *testing.T) {
 
 	t.Run("SyncSchedule_EmptyDates", func(t *testing.T) {
 		db.CreateItem(ctx, &models.Item{Name: "Item1", TotalQuantity: 1})
-		err := worker.handleSheetTask(ctx, TaskSyncSchedule, sheetTaskPayload{})
+		err := worker.handleSheetTask(ctx, TaskSyncSchedule, &sheetTaskPayload{})
 		if err != nil {
 			t.Fatalf("handle: %v", err)
 		}
 	})
 
 	t.Run("UnknownTaskType", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, "unknown", sheetTaskPayload{})
+		err := worker.handleSheetTask(ctx, "unknown", &sheetTaskPayload{})
 		if err == nil {
 			t.Fatalf("expected error for unknown task type")
 		}
 	})
 
 	t.Run("UpsertMissingBooking", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, TaskUpsert, sheetTaskPayload{})
+		err := worker.handleSheetTask(ctx, TaskUpsert, &sheetTaskPayload{})
 		if err == nil {
 			t.Fatalf("expected error for missing booking")
 		}
 	})
 
 	t.Run("DeleteMissingID", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, TaskDelete, sheetTaskPayload{})
+		err := worker.handleSheetTask(ctx, TaskDelete, &sheetTaskPayload{})
 		if err == nil {
 			t.Fatalf("expected error for missing booking ID")
 		}
 	})
 
 	t.Run("UpdateStatusMissingData", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, TaskUpdateStatus, sheetTaskPayload{})
+		err := worker.handleSheetTask(ctx, TaskUpdateStatus, &sheetTaskPayload{})
 		if err == nil {
 			t.Fatalf("expected error for missing status data")
 		}

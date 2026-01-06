@@ -9,9 +9,10 @@ import (
 	"os"
 	"time"
 
-	"bronivik/internal/api/gen/availability/v1"
+	availabilityv1 "bronivik/internal/api/gen/availability/v1"
 	"bronivik/internal/config"
 	"bronivik/internal/database"
+
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

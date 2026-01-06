@@ -60,19 +60,19 @@ func (s *UserService) UpdateUserActivity(ctx context.Context, telegramID int64) 
 	return s.repo.UpdateUserActivity(ctx, telegramID)
 }
 
-func (s *UserService) GetAllUsers(ctx context.Context) ([]models.User, error) {
+func (s *UserService) GetAllUsers(ctx context.Context) ([]*models.User, error) {
 	return s.repo.GetAllUsers(ctx)
 }
 
-func (s *UserService) GetActiveUsers(ctx context.Context, days int) ([]models.User, error) {
+func (s *UserService) GetActiveUsers(ctx context.Context, days int) ([]*models.User, error) {
 	return s.repo.GetActiveUsers(ctx, days)
 }
 
-func (s *UserService) GetManagers(ctx context.Context) ([]models.User, error) {
+func (s *UserService) GetManagers(ctx context.Context) ([]*models.User, error) {
 	return s.repo.GetUsersByManagerStatus(ctx, true)
 }
 
-func (s *UserService) GetUserBookings(ctx context.Context, userID int64) ([]models.Booking, error) {
+func (s *UserService) GetUserBookings(ctx context.Context, userID int64) ([]*models.Booking, error) {
 	return s.repo.GetUserBookings(ctx, userID)
 }
 

@@ -53,7 +53,7 @@ func TestHandleManagerCommand(t *testing.T) {
 					Text: tt.text,
 				},
 			}
-			b.handleManagerCommand(ctx, update)
+			b.handleManagerCommand(ctx, &update)
 
 			msgs := mocks.tg.getSentMessages()
 			assert.NotEmpty(t, msgs, "Expected message for %s", tt.text)
@@ -108,7 +108,7 @@ func TestHandleManagerCallback(t *testing.T) {
 					Data: tt.data,
 				},
 			}
-			b.handleManagerCallback(ctx, update)
+			b.handleManagerCallback(ctx, &update)
 			if tt.status != "" {
 				assert.Equal(t, tt.status, booking.Status)
 			}
@@ -181,7 +181,7 @@ func TestUtils_More(t *testing.T) {
 
 	t.Run("requestSpecificDate", func(t *testing.T) {
 		update := tgbotapi.Update{Message: &tgbotapi.Message{From: &tgbotapi.User{ID: 123}, Chat: &tgbotapi.Chat{ID: 123}}}
-		b.requestSpecificDate(ctx, update)
+		b.requestSpecificDate(ctx, &update)
 		assert.NotEmpty(t, mocks.tg.getSentMessages())
 	})
 
@@ -195,7 +195,7 @@ func TestUtils_More(t *testing.T) {
 				},
 			},
 		}
-		b.editManagerItemsPage(update, 0)
+		b.editManagerItemsPage(&update, 0)
 		// Should not panic
 	})
 }
@@ -216,7 +216,7 @@ func TestBot_HandleCallButton(t *testing.T) {
 		},
 	}
 
-	b.handleCallButton(context.Background(), update)
+	b.handleCallButton(context.Background(), &update)
 	assert.NotEmpty(t, mocks.tg.getSentMessages())
 }
 
@@ -232,7 +232,7 @@ func TestBot_ShowUserBookings(t *testing.T) {
 		},
 	}
 
-	b.showUserBookings(context.Background(), update)
+	b.showUserBookings(context.Background(), &update)
 	assert.NotEmpty(t, mocks.tg.getSentMessages())
 }
 

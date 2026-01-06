@@ -133,7 +133,7 @@ func (c *BronivikClient) writeCache(ctx context.Context, key string, val any) {
 }
 
 func (c *BronivikClient) doGet(ctx context.Context, endpoint string, out any) error {
-    req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
     if err != nil {
         return err
     }
@@ -141,7 +141,7 @@ func (c *BronivikClient) doGet(ctx context.Context, endpoint string, out any) er
     return c.do(req, out)
 }
 
-func (c *BronivikClient) doPost(ctx context.Context, endpoint string, body any, out any) error {
+func (c *BronivikClient) doPost(ctx context.Context, endpoint string, body, out any) error {
     data, err := json.Marshal(body)
     if err != nil {
         return err

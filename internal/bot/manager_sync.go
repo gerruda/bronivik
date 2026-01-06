@@ -40,48 +40,17 @@ func (b *Bot) SyncScheduleToSheets(ctx context.Context) {
 		Int("dates_count", len(dailyBookings)).
 		Msg("Found bookings for sync")
 
-	// Конвертируем модели
-	googleDailyBookings := make(map[string][]models.Booking)
-	for date, bookings := range dailyBookings {
-		var googleBookings []models.Booking
-		for _, booking := range bookings {
-			googleBookings = append(googleBookings, models.Booking{
-				ID:           booking.ID,
-				UserID:       booking.UserID,
-				ItemID:       booking.ItemID,
-				Date:         booking.Date,
-				Status:       booking.Status,
-				Comment:      booking.Comment,
-				UserName:     booking.UserName,
-				UserNickname: booking.UserNickname,
-				Phone:        booking.Phone,
-				ItemName:     booking.ItemName,
-				CreatedAt:    booking.CreatedAt,
-				UpdatedAt:    booking.UpdatedAt,
-			})
-		}
-		googleDailyBookings[date] = googleBookings
-	}
-
-	// Конвертируем items
-	var googleItems []models.Item
+	// Получаем активные товары
 	items, err := b.itemService.GetActiveItems(ctx)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Failed to get active items for schedule sync")
 		return
 	}
-	for _, item := range items {
-		googleItems = append(googleItems, models.Item{
-			ID:            item.ID,
-			Name:          item.Name,
-			TotalQuantity: item.TotalQuantity,
-		})
-	}
 
-	b.logger.Info().Int("items_count", len(googleItems)).Msg("Updating Google Sheets")
+	b.logger.Info().Int("items_count", len(items)).Msg("Updating Google Sheets")
 
 	// Обновляем расписание в Google Sheets
-	err = b.sheetsService.UpdateScheduleSheet(ctx, startDate, endDate, googleDailyBookings, googleItems)
+	err = b.sheetsService.UpdateScheduleSheet(ctx, startDate, endDate, dailyBookings, items)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Failed to sync schedule to Google Sheets")
 	} else {

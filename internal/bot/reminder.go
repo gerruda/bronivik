@@ -22,10 +22,10 @@ func (b *Bot) StartReminders(ctx context.Context) {
 		if b.config.Bot.ReminderTime != "" {
 			var m int
 			_, err := fmt.Sscanf(b.config.Bot.ReminderTime, "%d:%d", &hour, &m)
-	if err != nil {
-		b.logger.Error().Err(err).Str("reminder_time", b.config.Bot.ReminderTime).Msg("Invalid reminder time format")
-		return
-	}
+			if err != nil {
+				b.logger.Error().Err(err).Str("reminder_time", b.config.Bot.ReminderTime).Msg("Invalid reminder time format")
+				return
+			}
 		}
 
 		// First wait until next reminder time local time, then tick every 24h.
@@ -86,7 +86,7 @@ func shouldRemindStatus(status string) bool {
 	}
 }
 
-func formatReminderMessage(b models.Booking) string {
+func formatReminderMessage(b *models.Booking) string {
 	date := b.Date.Format("02.01.2006")
 	return "Напоминание: завтра у вас бронь " + b.ItemName + " на " + date + ". Статус: " + b.Status
 }

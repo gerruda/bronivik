@@ -33,7 +33,7 @@ func (m *mockRepo) CreateBookingWithLock(ctx context.Context, b *models.Booking)
 func (m *mockRepo) UpdateBookingStatus(ctx context.Context, id int64, s string) error {
 	return m.Called(ctx, id, s).Error(0)
 }
-func (m *mockRepo) UpdateBookingStatusWithVersion(ctx context.Context, id int64, v int64, s string) error {
+func (m *mockRepo) UpdateBookingStatusWithVersion(ctx context.Context, id, v int64, s string) error {
 	return m.Called(ctx, id, v, s).Error(0)
 }
 func (m *mockRepo) GetBookingsByDateRange(ctx context.Context, s, e time.Time) ([]models.Booking, error) {
@@ -75,7 +75,7 @@ func (m *mockRepo) UpdateItem(ctx context.Context, i *models.Item) error {
 func (m *mockRepo) DeactivateItem(ctx context.Context, id int64) error {
 	return m.Called(ctx, id).Error(0)
 }
-func (m *mockRepo) ReorderItem(ctx context.Context, id int64, o int64) error {
+func (m *mockRepo) ReorderItem(ctx context.Context, id, o int64) error {
 	return m.Called(ctx, id, o).Error(0)
 }
 func (m *mockRepo) GetAllUsers(ctx context.Context) ([]models.User, error) {
@@ -113,14 +113,14 @@ func (m *mockRepo) GetBookedCount(ctx context.Context, id int64, d time.Time) (i
 	args := m.Called(ctx, id, d)
 	return args.Int(0), args.Error(1)
 }
-func (m *mockRepo) GetBookingWithAvailability(ctx context.Context, id int64, nid int64) (*models.Booking, bool, error) {
+func (m *mockRepo) GetBookingWithAvailability(ctx context.Context, id, nid int64) (*models.Booking, bool, error) {
 	args := m.Called(ctx, id, nid)
 	if args.Get(0) == nil {
 		return nil, args.Bool(1), args.Error(2)
 	}
 	return args.Get(0).(*models.Booking), args.Bool(1), args.Error(2)
 }
-func (m *mockRepo) UpdateBookingItemAndStatusWithVersion(ctx context.Context, id int64, v int64, iid int64, in string, s string) error {
+func (m *mockRepo) UpdateBookingItemAndStatusWithVersion(ctx context.Context, id, v, iid int64, in, s string) error {
 	return m.Called(ctx, id, v, iid, in, s).Error(0)
 }
 func (m *mockRepo) SetItems(items []models.Item) { m.Called(items) }

@@ -73,7 +73,7 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, update *tgbotapi.Update) 
 	}
 }
 
-func (b *Bot) handleDateSelection(ctx context.Context, update tgbotapi.Update, itemID int64) {
+func (b *Bot) handleDateSelection(ctx context.Context, update *tgbotapi.Update, itemID int64) {
 	selectedItem, err := b.itemService.GetItemByID(ctx, itemID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("item_id", itemID).Msg("Error getting item by ID")
@@ -83,13 +83,14 @@ func (b *Bot) handleDateSelection(ctx context.Context, update tgbotapi.Update, i
 	var chatID int64
 	var userID int64
 
-	if update.CallbackQuery != nil {
+	switch {
+	case update.CallbackQuery != nil:
 		chatID = update.CallbackQuery.Message.Chat.ID
 		userID = update.CallbackQuery.From.ID
-	} else if update.Message != nil {
+	case update.Message != nil:
 		chatID = update.Message.Chat.ID
 		userID = update.Message.From.ID
-	} else {
+	default:
 		return
 	}
 
@@ -100,10 +101,12 @@ func (b *Bot) handleDateSelection(ctx context.Context, update tgbotapi.Update, i
 		"item_id": itemID,
 	})
 
-	_, _ = b.tgService.Send(msg)
+	if _, err := b.tgService.Send(msg); err != nil {
+		b.logger.Error().Err(err).Msg("Failed to send message in handleDateSelection")
+	}
 }
 
-func (b *Bot) handleScheduleItemSelected(ctx context.Context, update tgbotapi.Update, itemID int64) {
+func (b *Bot) handleScheduleItemSelected(ctx context.Context, update *tgbotapi.Update, itemID int64) {
 	selectedItem, err := b.itemService.GetItemByID(ctx, itemID)
 	if err != nil {
 		b.sendMessage(update.CallbackQuery.Message.Chat.ID, "Ошибка: аппарат не найден")
@@ -120,14 +123,16 @@ func (b *Bot) handleScheduleItemSelected(ctx context.Context, update tgbotapi.Up
 
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📅 30 дней"),
-			tgbotapi.NewKeyboardButton("🗓 Выбрать дату"),
+			tgbotapi.NewKeyboardButton(btnMonthSchedule),
+			tgbotapi.NewKeyboardButton(btnPickDate),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("⬅️ Назад к выбору аппарата"),
+			tgbotapi.NewKeyboardButton(btnBackToItems),
 		),
 	)
 	msg.ReplyMarkup = keyboard
 
-	_, _ = b.tgService.Send(msg)
+	if _, err := b.tgService.Send(msg); err != nil {
+		b.logger.Error().Err(err).Msg("Failed to send message in handleScheduleItemSelected")
+	}
 }

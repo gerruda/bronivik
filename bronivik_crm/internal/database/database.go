@@ -11,6 +11,7 @@ import (
 
 	"bronivik/bronivik_crm/internal/api"
 	"bronivik/bronivik_crm/internal/models"
+
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -33,12 +34,16 @@ type DB struct {
 
 // GetOrCreateUserByTelegramID ensures a user row exists for given telegram id and stores basic profile fields.
 // Phone can be empty; if provided, it will overwrite stored value.
-func (db *DB) GetOrCreateUserByTelegramID(ctx context.Context, telegramID int64, username, firstName, lastName, phone string) (*models.User, error) {
+func (db *DB) GetOrCreateUserByTelegramID(
+	ctx context.Context,
+	telegramID int64,
+	username, firstName, lastName, phone string,
+) (*models.User, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	u, err := getUserByTelegramIDTx(ctx, tx, telegramID)
 	if err != nil && err != sql.ErrNoRows {
@@ -56,14 +61,21 @@ func (db *DB) GetOrCreateUserByTelegramID(ctx context.Context, telegramID int64,
 		if err != nil {
 			return nil, err
 		}
-		u = &models.User{ID: id, TelegramID: telegramID, Username: username, FirstName: firstName, LastName: lastName, CreatedAt: now, UpdatedAt: now}
+		u = &models.User{
+			ID: id, TelegramID: telegramID, Username: username,
+			FirstName: firstName, LastName: lastName, CreatedAt: now, UpdatedAt: now,
+		}
 	} else {
 		// best-effort update of profile fields; phone only if provided
 		if phone != "" {
-			_, _ = tx.ExecContext(ctx, `UPDATE users SET username = ?, first_name = ?, last_name = ?, phone = ?, updated_at = ? WHERE id = ?`, username, firstName, lastName, phone, now, u.ID)
+				_, _ = tx.ExecContext(ctx, `
+					UPDATE users SET username = ?, first_name = ?, last_name = ?, phone = ?, updated_at = ? 
+					WHERE id = ?`, username, firstName, lastName, phone, now, u.ID)
 			u.Phone = phone
 		} else {
-			_, _ = tx.ExecContext(ctx, `UPDATE users SET username = ?, first_name = ?, last_name = ?, updated_at = ? WHERE id = ?`, username, firstName, lastName, now, u.ID)
+				_, _ = tx.ExecContext(ctx, `
+					UPDATE users SET username = ?, first_name = ?, last_name = ?, updated_at = ? 
+					WHERE id = ?`, username, firstName, lastName, now, u.ID)
 		}
 		u.Username = username
 		u.FirstName = firstName
@@ -78,7 +90,9 @@ func (db *DB) GetOrCreateUserByTelegramID(ctx context.Context, telegramID int64,
 }
 
 func getUserByTelegramIDTx(ctx context.Context, tx *sql.Tx, telegramID int64) (*models.User, error) {
-	row := tx.QueryRowContext(ctx, `SELECT id, telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, created_at, updated_at
+	row := tx.QueryRowContext(ctx, `
+		SELECT id, telegram_id, username, first_name, last_name, 
+		       phone, is_manager, is_blacklisted, created_at, updated_at
 		FROM users WHERE telegram_id = ? LIMIT 1`, telegramID)
 	return scanUser(row)
 }
@@ -269,7 +283,9 @@ func (db *DB) CreateCabinet(ctx context.Context, c *models.Cabinet) error {
 
 // ListActiveCabinets returns active cabinets sorted by id.
 func (db *DB) ListActiveCabinets(ctx context.Context) ([]models.Cabinet, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, name, description, is_active, created_at, updated_at FROM cabinets WHERE is_active = 1 ORDER BY id ASC`)
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, name, description, is_active, created_at, updated_at 
+		FROM cabinets WHERE is_active = 1 ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -340,8 +356,13 @@ func (db *DB) CreateHourlyBooking(ctx context.Context, b *models.HourlyBooking) 
 		return fmt.Errorf("booking is nil")
 	}
 	now := time.Now()
-	res, err := db.ExecContext(ctx, `INSERT INTO hourly_bookings (user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, b.UserID, b.CabinetID, b.ItemName, b.ClientName, b.ClientPhone, b.StartTime, b.EndTime, b.Status, b.Comment, now, now)
+	res, err := db.ExecContext(ctx, `
+		INSERT INTO hourly_bookings (
+			user_id, cabinet_id, item_name, client_name, client_phone, 
+			start_time, end_time, status, comment, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.UserID, b.CabinetID, b.ItemName, b.ClientName, b.ClientPhone,
+		b.StartTime, b.EndTime, b.Status, b.Comment, now, now)
 	if err != nil {
 		return err
 	}
@@ -357,13 +378,18 @@ func (db *DB) CreateHourlyBooking(ctx context.Context, b *models.HourlyBooking) 
 
 // GetHourlyBooking returns booking by id.
 func (db *DB) GetHourlyBooking(ctx context.Context, id int64) (*models.HourlyBooking, error) {
-	row := db.QueryRowContext(ctx, `SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at FROM hourly_bookings WHERE id = ?`, id)
+	row := db.QueryRowContext(ctx, `
+		SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, 
+		       start_time, end_time, status, comment, created_at, updated_at 
+		FROM hourly_bookings WHERE id = ?`, id)
 	return scanHourly(row)
 }
 
 // ListHourlyBookingsByCabinet returns bookings for a cabinet within range.
 func (db *DB) ListHourlyBookingsByCabinet(ctx context.Context, cabinetID int64, from, to time.Time) ([]models.HourlyBooking, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, 
+		       start_time, end_time, status, comment, created_at, updated_at
         FROM hourly_bookings
         WHERE cabinet_id = ? AND start_time < ? AND end_time > ?
         ORDER BY start_time ASC`, cabinetID, to, from)
@@ -389,7 +415,9 @@ func (db *DB) ListUserBookings(ctx context.Context, userID int64, limit int, inc
 		limit = 10
 	}
 	args := []any{userID}
-	query := `SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at
+	query := `
+		SELECT id, user_id, cabinet_id, item_name, client_name, client_phone, 
+		       start_time, end_time, status, comment, created_at, updated_at
 		FROM hourly_bookings WHERE user_id = ?`
 	if !includePast {
 		query += " AND end_time >= ?"
@@ -417,7 +445,9 @@ func (db *DB) ListUserBookings(ctx context.Context, userID int64, limit int, inc
 
 // UpdateHourlyBookingStatus updates status/comment and updated_at.
 func (db *DB) UpdateHourlyBookingStatus(ctx context.Context, id int64, status, comment string) error {
-	_, err := db.ExecContext(ctx, `UPDATE hourly_bookings SET status = ?, comment = ?, updated_at = ? WHERE id = ?`, status, comment, time.Now(), id)
+	_, err := db.ExecContext(ctx, `
+		UPDATE hourly_bookings SET status = ?, comment = ?, updated_at = ? 
+		WHERE id = ?`, status, comment, time.Now(), id)
 	return err
 }
 
@@ -438,7 +468,9 @@ func (db *DB) CancelUserBooking(ctx context.Context, bookingID, userID int64) er
 	var ownerID int64
 	var status string
 	var start time.Time
-	if err := tx.QueryRowContext(ctx, `SELECT user_id, status, start_time FROM hourly_bookings WHERE id = ?`, bookingID).Scan(&ownerID, &status, &start); err != nil {
+	if err := tx.QueryRowContext(ctx, `
+		SELECT user_id, status, start_time 
+		FROM hourly_bookings WHERE id = ?`, bookingID).Scan(&ownerID, &status, &start); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrBookingNotFound
 		}
@@ -455,7 +487,9 @@ func (db *DB) CancelUserBooking(ctx context.Context, bookingID, userID int64) er
 		return ErrBookingFinalized
 	}
 
-	if _, err := tx.ExecContext(ctx, `UPDATE hourly_bookings SET status = 'canceled', updated_at = ? WHERE id = ?`, now, bookingID); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE hourly_bookings SET status = 'canceled', updated_at = ? 
+		WHERE id = ?`, now, bookingID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -463,7 +497,10 @@ func (db *DB) CancelUserBooking(ctx context.Context, bookingID, userID int64) er
 
 // CountActiveUserBookings returns count of future, non-canceled bookings for a user.
 func (db *DB) CountActiveUserBookings(ctx context.Context, userID int64) (int, error) {
-	row := db.QueryRowContext(ctx, `SELECT COUNT(1) FROM hourly_bookings WHERE user_id = ? AND end_time >= ? AND status NOT IN ('canceled','rejected')`, userID, time.Now())
+	row := db.QueryRowContext(ctx, `
+		SELECT COUNT(1) FROM hourly_bookings 
+		WHERE user_id = ? AND end_time >= ? 
+		AND status NOT IN ('canceled','rejected')`, userID, time.Now())
 	var count int
 	if err := row.Scan(&count); err != nil {
 		return 0, err
@@ -472,7 +509,7 @@ func (db *DB) CountActiveUserBookings(ctx context.Context, userID int64) (int, e
 }
 
 // CheckSlotAvailability verifies if a time slot is free for a cabinet on a date.
-func (db *DB) CheckSlotAvailability(ctx context.Context, cabinetID int64, date time.Time, start, end time.Time) (bool, error) {
+func (db *DB) CheckSlotAvailability(ctx context.Context, cabinetID int64, date, start, end time.Time) (bool, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -507,7 +544,8 @@ func (db *DB) GetAvailableSlots(ctx context.Context, cabinetID int64, date time.
 	}
 
 	var slots []TimeSlot
-	for cursor := startWin; cursor.Add(time.Duration(slotDuration)*time.Minute).Before(endWin) || cursor.Add(time.Duration(slotDuration)*time.Minute).Equal(endWin); cursor = cursor.Add(time.Duration(slotDuration) * time.Minute) {
+	for cursor := startWin; cursor.Add(time.Duration(slotDuration)*time.Minute).Before(endWin) ||
+		cursor.Add(time.Duration(slotDuration)*time.Minute).Equal(endWin); cursor = cursor.Add(time.Duration(slotDuration) * time.Minute) {
 		s := cursor
 		e := cursor.Add(time.Duration(slotDuration) * time.Minute)
 		ok, err := checkSlotAvailabilityTx(ctx, tx, cabinetID, date, s, e)
@@ -536,8 +574,8 @@ func (db *DB) CreateHourlyBookingWithChecks(ctx context.Context, booking *models
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := validateSlotAlignmentTx(ctx, tx, booking.CabinetID, booking.StartTime, booking.EndTime); err != nil {
-		return err
+if aErr := validateSlotAlignmentTx(ctx, tx, booking.CabinetID, booking.StartTime, booking.EndTime); aErr != nil {
+			return aErr
 	}
 
 	// slot availability
@@ -552,15 +590,21 @@ func (db *DB) CreateHourlyBookingWithChecks(ctx context.Context, booking *models
 	// item availability via bronivik_jr API
 	if client != nil && booking.ItemName != "" {
 		dateStr := booking.StartTime.Format("2006-01-02")
-		avail, err := client.GetAvailability(ctx, booking.ItemName, dateStr)
-		if err != nil || avail == nil || !avail.Available {
+		avail, aErr := client.GetAvailability(ctx, booking.ItemName, dateStr)
+		if aErr != nil || avail == nil || !avail.Available {
 			return ErrItemNotAvailable
 		}
 	}
 
 	now := time.Now()
-	res, err := tx.ExecContext(ctx, `INSERT INTO hourly_bookings (user_id, cabinet_id, item_name, client_name, client_phone, start_time, end_time, status, comment, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, booking.UserID, booking.CabinetID, booking.ItemName, booking.ClientName, booking.ClientPhone, booking.StartTime, booking.EndTime, booking.Status, booking.Comment, now, now)
+	res, err := tx.ExecContext(ctx, `
+		INSERT INTO hourly_bookings (
+			user_id, cabinet_id, item_name, client_name, client_phone, 
+			start_time, end_time, status, comment, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		booking.UserID, booking.CabinetID, booking.ItemName, booking.ClientName,
+		booking.ClientPhone, booking.StartTime, booking.EndTime, booking.Status,
+		booking.Comment, now, now)
 	if err != nil {
 		return err
 	}
@@ -575,7 +619,7 @@ func (db *DB) CreateHourlyBookingWithChecks(ctx context.Context, booking *models
 	return tx.Commit()
 }
 
-func checkSlotAvailabilityTx(ctx context.Context, tx *sql.Tx, cabinetID int64, date time.Time, start, end time.Time) (bool, error) {
+func checkSlotAvailabilityTx(ctx context.Context, tx *sql.Tx, cabinetID int64, date, start, end time.Time) (bool, error) {
 	startWin, endWin, _, err := resolveScheduleWindowTx(ctx, tx, cabinetID, date)
 	if err != nil {
 		return false, err
@@ -588,14 +632,16 @@ func checkSlotAvailabilityTx(ctx context.Context, tx *sql.Tx, cabinetID int64, d
 	}
 
 	var count int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM hourly_bookings
-        WHERE cabinet_id = ? AND start_time < ? AND end_time > ? AND status NOT IN ('canceled','rejected')`, cabinetID, end, start).Scan(&count); err != nil {
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(1) FROM hourly_bookings
+        WHERE cabinet_id = ? AND start_time < ? AND end_time > ? 
+		AND status NOT IN ('canceled','rejected')`, cabinetID, end, start).Scan(&count); err != nil {
 		return false, err
 	}
 	return count == 0, nil
 }
 
-func resolveScheduleWindowTx(ctx context.Context, tx *sql.Tx, cabinetID int64, date time.Time) (time.Time, time.Time, int, error) {
+func resolveScheduleWindowTx(ctx context.Context, tx *sql.Tx, cabinetID int64, date time.Time) (startWin, endWin time.Time, slotDuration int, err error) {
 	day := int(date.Weekday())
 	if day == 0 {
 		day = 7 // make Monday=1..Sunday=7 consistent with UI
@@ -604,14 +650,20 @@ func resolveScheduleWindowTx(ctx context.Context, tx *sql.Tx, cabinetID int64, d
 	var sched models.CabinetSchedule
 	row := tx.QueryRowContext(ctx, `SELECT id, cabinet_id, day_of_week, start_time, end_time, slot_duration, is_active, created_at, updated_at
         FROM cabinet_schedules WHERE cabinet_id = ? AND day_of_week = ? AND is_active = 1 LIMIT 1`, cabinetID, day)
-	if err := row.Scan(&sched.ID, &sched.CabinetID, &sched.DayOfWeek, &sched.StartTime, &sched.EndTime, &sched.SlotDuration, &sched.IsActive, &sched.CreatedAt, &sched.UpdatedAt); err != nil {
+	if err = row.Scan(
+		&sched.ID, &sched.CabinetID, &sched.DayOfWeek, &sched.StartTime,
+		&sched.EndTime, &sched.SlotDuration, &sched.IsActive, &sched.CreatedAt,
+		&sched.UpdatedAt,
+	); err != nil {
 		if err == sql.ErrNoRows {
 			return time.Time{}, time.Time{}, 0, nil
 		}
 		return time.Time{}, time.Time{}, 0, err
 	}
 
-	ovrStart, ovrEnd, closed, err := loadOverrideTx(ctx, tx, cabinetID, date)
+	var ovrStart, ovrEnd string
+	var closed bool
+	ovrStart, ovrEnd, closed, err = loadOverrideTx(ctx, tx, cabinetID, date)
 	if err != nil {
 		return time.Time{}, time.Time{}, 0, err
 	}
@@ -628,11 +680,11 @@ func resolveScheduleWindowTx(ctx context.Context, tx *sql.Tx, cabinetID int64, d
 		endStr = ovrEnd
 	}
 
-	startWin, err := combineDateTime(date, startStr)
+	startWin, err = combineDateTime(date, startStr)
 	if err != nil {
 		return time.Time{}, time.Time{}, 0, err
 	}
-	endWin, err := combineDateTime(date, endStr)
+	endWin, err = combineDateTime(date, endStr)
 	if err != nil {
 		return time.Time{}, time.Time{}, 0, err
 	}
@@ -641,14 +693,14 @@ func resolveScheduleWindowTx(ctx context.Context, tx *sql.Tx, cabinetID int64, d
 }
 
 // GetScheduleWindow returns schedule window and slot duration for a cabinet/date.
-func (db *DB) GetScheduleWindow(ctx context.Context, cabinetID int64, date time.Time) (time.Time, time.Time, int, error) {
+func (db *DB) GetScheduleWindow(ctx context.Context, cabinetID int64, date time.Time) (startWin, endWin time.Time, slotDuration int, err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return time.Time{}, time.Time{}, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	startWin, endWin, slotDuration, err := resolveScheduleWindowTx(ctx, tx, cabinetID, date)
+	startWin, endWin, slotDuration, err = resolveScheduleWindowTx(ctx, tx, cabinetID, date)
 	if err != nil {
 		return time.Time{}, time.Time{}, 0, err
 	}
@@ -678,8 +730,11 @@ func validateSlotAlignmentTx(ctx context.Context, tx *sql.Tx, cabinetID int64, s
 	return nil
 }
 
-func loadOverrideTx(ctx context.Context, tx *sql.Tx, cabinetID int64, date time.Time) (start string, end string, closed bool, err error) {
-	row := tx.QueryRowContext(ctx, `SELECT start_time, end_time, is_closed FROM cabinet_schedule_overrides WHERE cabinet_id = ? AND date(date) = date(?) LIMIT 1`, cabinetID, date)
+func loadOverrideTx(ctx context.Context, tx *sql.Tx, cabinetID int64, date time.Time) (start, end string, closed bool, err error) {
+	row := tx.QueryRowContext(ctx, `
+		SELECT start_time, end_time, is_closed 
+		FROM cabinet_schedule_overrides 
+		WHERE cabinet_id = ? AND date(date) = date(?) LIMIT 1`, cabinetID, date)
 	if err = row.Scan(&start, &end, &closed); err != nil {
 		if err == sql.ErrNoRows {
 			return "", "", false, nil
@@ -695,13 +750,18 @@ func combineDateTime(date time.Time, hm string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("invalid time format: %s", hm)
 	}
 	hour, _ := strconv.Atoi(parts[0])
-	min, _ := strconv.Atoi(parts[1])
-	return time.Date(date.Year(), date.Month(), date.Day(), hour, min, 0, 0, date.Location()), nil
+	minute, _ := strconv.Atoi(parts[1])
+	return time.Date(date.Year(), date.Month(), date.Day(), hour, minute, 0, 0, date.Location()), nil
 }
 
 func scanHourly(r rowScanner) (*models.HourlyBooking, error) {
 	var b models.HourlyBooking
-	if err := r.Scan(&b.ID, &b.UserID, &b.CabinetID, &b.ItemName, &b.ClientName, &b.ClientPhone, &b.StartTime, &b.EndTime, &b.Status, &b.Comment, &b.CreatedAt, &b.UpdatedAt); err != nil {
+	err := r.Scan(
+		&b.ID, &b.UserID, &b.CabinetID, &b.ItemName, &b.ClientName,
+		&b.ClientPhone, &b.StartTime, &b.EndTime, &b.Status, &b.Comment,
+		&b.CreatedAt, &b.UpdatedAt,
+	)
+	if err != nil {
 		return nil, err
 	}
 	return &b, nil
@@ -732,7 +792,11 @@ func (db *DB) UpdateSchedule(ctx context.Context, s *models.CabinetSchedule) err
 	if s == nil {
 		return fmt.Errorf("schedule is nil")
 	}
-	_, err := db.ExecContext(ctx, `UPDATE cabinet_schedules SET day_of_week = ?, start_time = ?, end_time = ?, slot_duration = ?, is_active = ?, updated_at = ? WHERE id = ?`,
+	_, err := db.ExecContext(ctx, `
+		UPDATE cabinet_schedules 
+		SET day_of_week = ?, start_time = ?, end_time = ?, 
+		    slot_duration = ?, is_active = ?, updated_at = ? 
+		WHERE id = ?`,
 		s.DayOfWeek, s.StartTime, s.EndTime, s.SlotDuration, s.IsActive, time.Now(), s.ID)
 	return err
 }
@@ -766,7 +830,10 @@ func scanCabinet(r rowScanner) (*models.Cabinet, error) {
 
 func scanUser(r rowScanner) (*models.User, error) {
 	var u models.User
-	if err := r.Scan(&u.ID, &u.TelegramID, &u.Username, &u.FirstName, &u.LastName, &u.Phone, &u.IsManager, &u.IsBlacklisted, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := r.Scan(
+		&u.ID, &u.TelegramID, &u.Username, &u.FirstName, &u.LastName,
+		&u.Phone, &u.IsManager, &u.IsBlacklisted, &u.CreatedAt, &u.UpdatedAt,
+	); err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -774,7 +841,10 @@ func scanUser(r rowScanner) (*models.User, error) {
 
 func scanSchedule(r rowScanner) (*models.CabinetSchedule, error) {
 	var s models.CabinetSchedule
-	if err := r.Scan(&s.ID, &s.CabinetID, &s.DayOfWeek, &s.StartTime, &s.EndTime, &s.SlotDuration, &s.IsActive, &s.CreatedAt, &s.UpdatedAt); err != nil {
+	if err := r.Scan(
+		&s.ID, &s.CabinetID, &s.DayOfWeek, &s.StartTime, &s.EndTime,
+		&s.SlotDuration, &s.IsActive, &s.CreatedAt, &s.UpdatedAt,
+	); err != nil {
 		return nil, err
 	}
 	return &s, nil

@@ -24,7 +24,10 @@ func (db *DB) LoadItems(ctx context.Context) error {
 
 	for rows.Next() {
 		var item models.Item
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.TotalQuantity, &item.SortOrder, &item.IsActive, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&item.ID, &item.Name, &item.Description, &item.TotalQuantity,
+			&item.SortOrder, &item.IsActive, &item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
 			return fmt.Errorf("failed to scan item: %w", err)
 		}
 		db.itemsCache[item.ID] = item
@@ -55,13 +58,13 @@ func (db *DB) SyncItems(ctx context.Context, configItems []models.Item) error {
 	return db.LoadItems(ctx)
 }
 
-func (db *DB) SetItems(items []models.Item) {
+func (db *DB) SetItems(items []*models.Item) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	db.itemsCache = make(map[int64]models.Item)
 	for i := range items {
 		item := items[i]
-		db.itemsCache[item.ID] = item
+		db.itemsCache[item.ID] = *item
 	}
 	db.cacheTime = time.Now()
 }
@@ -132,7 +135,8 @@ func (db *DB) GetItemByID(ctx context.Context, id int64) (*models.Item, error) {
 	var dbItem models.Item
 	query := `SELECT id, name, description, total_quantity, sort_order, is_active, created_at, updated_at FROM items WHERE id = ?`
 	err := db.QueryRowContext(ctx, query, id).Scan(
-		&dbItem.ID, &dbItem.Name, &dbItem.Description, &dbItem.TotalQuantity, &dbItem.SortOrder, &dbItem.IsActive, &dbItem.CreatedAt, &dbItem.UpdatedAt,
+		&dbItem.ID, &dbItem.Name, &dbItem.Description, &dbItem.TotalQuantity,
+		&dbItem.SortOrder, &dbItem.IsActive, &dbItem.CreatedAt, &dbItem.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get item by id: %w", err)
@@ -190,15 +194,16 @@ func (db *DB) GetItemAvailabilityByName(ctx context.Context, itemName string, da
 	}, nil
 }
 
-func (db *DB) GetActiveItems(ctx context.Context) ([]models.Item, error) {
+func (db *DB) GetActiveItems(ctx context.Context) ([]*models.Item, error) {
 	db.checkCacheTTL(ctx)
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	var items []models.Item
+	var items []*models.Item
 	for _, item := range db.itemsCache {
 		if item.IsActive {
-			items = append(items, item)
+			it := item
+			items = append(items, &it)
 		}
 	}
 
@@ -245,7 +250,7 @@ func (db *DB) DeactivateItem(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (db *DB) ReorderItem(ctx context.Context, id int64, newOrder int64) error {
+func (db *DB) ReorderItem(ctx context.Context, id, newOrder int64) error {
 	query := `UPDATE items SET sort_order = ?, updated_at = ? WHERE id = ?`
 	now := time.Now()
 	_, err := db.ExecContext(ctx, query, newOrder, now, id)
@@ -263,12 +268,13 @@ func (db *DB) ReorderItem(ctx context.Context, id int64, newOrder int64) error {
 	return nil
 }
 
-func (db *DB) GetItems() []models.Item {
+func (db *DB) GetItems() []*models.Item {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	var items []models.Item
+	var items []*models.Item
 	for _, item := range db.itemsCache {
-		items = append(items, item)
+		it := item
+		items = append(items, &it)
 	}
 	return items
 }

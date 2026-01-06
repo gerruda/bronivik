@@ -26,32 +26,12 @@ func (b *Bot) SyncBookingsToSheets(ctx context.Context) {
 
 	b.logger.Info().Int("count", len(bookings)).Msg("Syncing bookings to Google Sheets")
 
-	// Конвертируем в модели для Google Sheets
-	var googleBookings []*models.Booking
-	for i := range bookings {
-		booking := &bookings[i]
-		googleBookings = append(googleBookings, &models.Booking{
-			ID:           booking.ID,
-			UserID:       booking.UserID,
-			ItemID:       booking.ItemID,
-			Date:         booking.Date,
-			Status:       booking.Status,
-			UserName:     booking.UserName,
-			Phone:        booking.Phone,
-			ItemName:     booking.ItemName,
-			Comment:      booking.Comment,
-			UserNickname: booking.UserNickname,
-			CreatedAt:    booking.CreatedAt,
-			UpdatedAt:    booking.UpdatedAt,
-		})
-	}
-
 	// Полностью перезаписываем лист с заявками
-	err = b.sheetsService.ReplaceBookingsSheet(ctx, googleBookings)
+	err = b.sheetsService.ReplaceBookingsSheet(ctx, bookings)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Failed to sync bookings to Google Sheets")
 	} else {
-		b.logger.Info().Int("count", len(googleBookings)).Msg("Bookings successfully synced to Google Sheets")
+		b.logger.Info().Int("count", len(bookings)).Msg("Bookings successfully synced to Google Sheets")
 	}
 
 	// Также синхронизируем расписание

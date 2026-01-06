@@ -21,7 +21,7 @@ func NewItemService(repo domain.Repository, logger *zerolog.Logger) *ItemService
 	}
 }
 
-func (s *ItemService) GetActiveItems(ctx context.Context) ([]models.Item, error) {
+func (s *ItemService) GetActiveItems(ctx context.Context) ([]*models.Item, error) {
 	return s.repo.GetActiveItems(ctx)
 }
 

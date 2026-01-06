@@ -23,7 +23,11 @@ type PaginationParams struct {
 }
 
 // renderPaginatedList - универсальная функция для отрисовки пагинированного списка
-func (b *Bot) renderPaginatedList(params PaginationParams, totalCount int, itemsPerPage int, renderer func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton)) {
+func (b *Bot) renderPaginatedList(
+	params *PaginationParams,
+	totalCount, itemsPerPage int,
+	renderer func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton),
+) {
 	if itemsPerPage <= 0 {
 		itemsPerPage = b.config.Bot.PaginationSize
 	}
@@ -54,9 +58,9 @@ func (b *Bot) renderPaginatedList(params PaginationParams, totalCount int, items
 	message.WriteString(content)
 
 	// Добавляем навигационные кнопки
-	var navButtons []tgbotapi.InlineKeyboardButton
+	navButtons := make([]tgbotapi.InlineKeyboardButton, 0, 2)
 	if params.Page > 0 {
-		navButtons = append(navButtons, tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", fmt.Sprintf("%s%d", params.PagePrefix, params.Page-1)))
+		navButtons = append(navButtons, tgbotapi.NewInlineKeyboardButtonData(btnBack, fmt.Sprintf("%s%d", params.PagePrefix, params.Page-1)))
 	}
 	if endIdx < totalCount {
 		navButtons = append(navButtons, tgbotapi.NewInlineKeyboardButtonData("Вперед ➡️", fmt.Sprintf("%s%d", params.PagePrefix, params.Page+1)))
@@ -81,17 +85,21 @@ func (b *Bot) renderPaginatedList(params PaginationParams, totalCount int, items
 			markup,
 		)
 		editMsg.ParseMode = models.ParseModeMarkdown
-		b.tgService.Send(editMsg)
+		if _, err := b.tgService.Send(editMsg); err != nil {
+			b.logger.Error().Err(err).Msg("Failed to send editMsg in renderPaginatedList")
+		}
 	} else {
 		msg := tgbotapi.NewMessage(params.ChatID, message.String())
 		msg.ReplyMarkup = markup
 		msg.ParseMode = models.ParseModeMarkdown
-		b.tgService.Send(msg)
+		if _, err := b.tgService.Send(msg); err != nil {
+			b.logger.Error().Err(err).Msg("Failed to send msg in renderPaginatedList")
+		}
 	}
 }
 
 // renderPaginatedItems - обертка для списка аппаратов
-func (b *Bot) renderPaginatedItems(params PaginationParams) {
+func (b *Bot) renderPaginatedItems(params *PaginationParams) {
 	items, err := b.itemService.GetActiveItems(params.Ctx)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Error getting active items for pagination")
@@ -99,11 +107,12 @@ func (b *Bot) renderPaginatedItems(params PaginationParams) {
 		return
 	}
 
-	b.renderPaginatedList(params, len(items), b.config.Bot.PaginationSize, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
-		var content strings.Builder
-		var keyboard [][]tgbotapi.InlineKeyboardButton
+	b.renderPaginatedList(params, len(items), b.config.Bot.PaginationSize,
+		func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
+			var content strings.Builder
+			currentItems := items[startIdx:endIdx]
+			keyboard := make([][]tgbotapi.InlineKeyboardButton, 0, len(currentItems))
 
-		currentItems := items[startIdx:endIdx]
 		for i, item := range currentItems {
 			content.WriteString(fmt.Sprintf("%d. *%s*\n", startIdx+i+1, item.Name))
 			if item.Description != "" {
@@ -126,23 +135,23 @@ func (b *Bot) renderPaginatedItems(params PaginationParams) {
 }
 
 // renderPaginatedBookings - обертка для списка заявок
-func (b *Bot) renderPaginatedBookings(params PaginationParams, bookings []models.Booking) {
+func (b *Bot) renderPaginatedBookings(params *PaginationParams, bookings []*models.Booking) {
 	pageSize := b.config.Bot.PaginationSize
 	if pageSize > 5 {
 		pageSize = 5 // Keep bookings list shorter
 	}
 	b.renderPaginatedList(params, len(bookings), pageSize, func(startIdx, endIdx int) (string, [][]tgbotapi.InlineKeyboardButton) {
 		var content strings.Builder
-		var keyboard [][]tgbotapi.InlineKeyboardButton
-
 		currentBookings := bookings[startIdx:endIdx]
+		keyboard := make([][]tgbotapi.InlineKeyboardButton, 0, len(currentBookings))
+
 		for _, booking := range currentBookings {
-			statusEmoji := "⏳"
+			statusEmoji := statusPending
 			switch booking.Status {
 			case models.StatusConfirmed:
-				statusEmoji = "✅"
+				statusEmoji = statusSuccess
 			case models.StatusCanceled:
-				statusEmoji = "❌"
+				statusEmoji = statusError
 			case models.StatusChanged:
 				statusEmoji = "🔄"
 			case models.StatusCompleted:

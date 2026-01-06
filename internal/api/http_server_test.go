@@ -27,7 +27,7 @@ func TestAvailabilitySuccess(t *testing.T) {
 	db := newTestDB(t)
 	item := createTestItem(t, db, "camera", 2)
 	bookingDate := time.Date(2025, 12, 1, 10, 0, 0, 0, time.UTC)
-	insertTestBooking(t, db, item, bookingDate, "pending")
+	insertTestBooking(t, db, &item, bookingDate, "pending")
 
 	server := newTestHTTPServer(db)
 	ts := httptest.NewServer(server.server.Handler)
@@ -152,7 +152,7 @@ func TestAvailabilityBulk(t *testing.T) {
 	item1 := createTestItem(t, db, "camera", 2)
 	createTestItem(t, db, "lens", 1)
 	bookingDate := time.Date(2025, 12, 1, 10, 0, 0, 0, time.UTC)
-	insertTestBooking(t, db, item1, bookingDate, "confirmed")
+	insertTestBooking(t, db, &item1, bookingDate, "confirmed")
 
 	server := newTestHTTPServer(db)
 	ts := httptest.NewServer(server.server.Handler)
@@ -526,7 +526,7 @@ func TestAvailabilityService_GetAvailability(t *testing.T) {
 	db := newTestDB(t)
 	item := createTestItem(t, db, "camera", 2)
 	bookingDate := time.Date(2025, 12, 1, 10, 0, 0, 0, time.UTC)
-	insertTestBooking(t, db, item, bookingDate, "confirmed")
+	insertTestBooking(t, db, &item, bookingDate, "confirmed")
 
 	svc := NewAvailabilityService(db)
 
@@ -575,7 +575,7 @@ func TestAvailabilityService_GetAvailabilityBulk(t *testing.T) {
 	item1 := createTestItem(t, db, "camera", 2)
 	item2 := createTestItem(t, db, "lens", 1)
 	bookingDate := time.Date(2025, 12, 1, 10, 0, 0, 0, time.UTC)
-	insertTestBooking(t, db, item1, bookingDate, "confirmed")
+	insertTestBooking(t, db, &item1, bookingDate, "confirmed")
 
 	svc := NewAvailabilityService(db)
 

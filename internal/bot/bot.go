@@ -14,6 +14,30 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	btnCancel          = "❌ Отмена"
+	btnBack            = "⬅️ Назад"
+	btnCreateBooking   = "📋 СОЗДАТЬ ЗАЯВКУ"
+	btnMyBookings      = "📊 Мои заявки"
+	btnManagerContacts = "📞 Контакты менеджеров"
+	btnAvailableItems  = "💼 Ассортимент"
+	btnViewSchedule    = "📅 Посмотреть расписание"
+	btnMonthSchedule   = "📅 30 дней"
+	btnPickDate        = "🗓 Выбрать дату"
+	btnBackToItems     = "⬅️ Назад к выбору аппарата"
+	btnCreateForItem   = "📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ"
+	btnAllBookings          = "👨‍💼 Все заявки"
+	btnCreateBookingManager = "➕ Создать заявку (Менеджер)"
+	btnSyncBookings          = "🔄 Синхронизировать бронирования (Google Sheets)"
+	btnSyncSchedule          = "📅 Синхронизировать расписание (Google Sheets)"
+	btnConfirmCreate        = "✅ Подтвердить создание"
+
+	statusSuccess = "✅"
+	statusPending = "⏳"
+	statusError   = "❌"
+	typeSingle    = "single"
+)
+
 // Bot represents the Telegram bot instance and its dependencies.
 type Bot struct {
 	tgService      domain.TelegramService
@@ -88,7 +112,7 @@ func (b *Bot) Start(ctx context.Context) {
 			if !ok {
 				return
 			}
-			b.processUpdate(ctx, update)
+			b.processUpdate(ctx, &update)
 		}
 	}
 }

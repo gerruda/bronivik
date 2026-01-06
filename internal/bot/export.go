@@ -90,7 +90,7 @@ func (b *Bot) exportToExcel(ctx context.Context, startDate, endDate time.Time) (
 		}
 
 		// Группируем бронирования по аппаратам
-		bookingsByItem := make(map[int64][]models.Booking)
+		bookingsByItem := make(map[int64][]*models.Booking)
 		for _, booking := range bookings {
 			bookingsByItem[booking.ItemID] = append(bookingsByItem[booking.ItemID], booking)
 		}
@@ -114,11 +114,11 @@ func (b *Bot) exportToExcel(ctx context.Context, startDate, endDate time.Time) (
 					status := "❓"
 					switch booking.Status {
 					case models.StatusConfirmed, models.StatusCompleted:
-						status = "✅"
+						status = statusSuccess
 					case models.StatusPending, models.StatusChanged:
-						status = "⏳"
+						status = statusPending
 					case models.StatusCanceled:
-						status = "❌"
+						status = statusError
 					}
 					cellValue += fmt.Sprintf("%s %s (%s)\n", status, booking.UserName, booking.Phone)
 					if booking.Comment != "" {
@@ -186,7 +186,7 @@ func parseDate(dateStr string) time.Time {
 }
 
 // getCellStyle возвращает стиль ячейки
-func (b *Bot) getCellStyle(f *excelize.File, itemBookings []models.Booking, bookedCount int, totalQuantity int) (int, error) {
+func (b *Bot) getCellStyle(f *excelize.File, itemBookings []*models.Booking, bookedCount, totalQuantity int) (int, error) {
 	// Фильтруем активные заявки (исключаем отмененные)
 	activeBookings := b.filterActiveBookings(itemBookings)
 
@@ -251,8 +251,8 @@ func (b *Bot) getCellStyle(f *excelize.File, itemBookings []models.Booking, book
 }
 
 // filterActiveBookings фильтрует активные заявки
-func (b *Bot) filterActiveBookings(bookings []models.Booking) []models.Booking {
-	var active []models.Booking
+func (b *Bot) filterActiveBookings(bookings []*models.Booking) []*models.Booking {
+	var active []*models.Booking
 	for _, booking := range bookings {
 		if booking.Status != models.StatusCanceled {
 			active = append(active, booking)
@@ -275,7 +275,7 @@ func getLastColumn(colCount int) string {
 }
 
 // exportUsersToExcel создает Excel файл с данными пользователей
-func (b *Bot) exportUsersToExcel(ctx context.Context, users []*models.User) (string, error) {
+func (b *Bot) exportUsersToExcel(_ context.Context, users []*models.User) (string, error) {
 	// Создаем папку для экспорта, если не существует
 	if err := os.MkdirAll(b.config.Exports.Path, 0o755); err != nil {
 		return "", fmt.Errorf("error creating export directory: %v", err)
@@ -292,7 +292,10 @@ func (b *Bot) exportUsersToExcel(ctx context.Context, users []*models.User) (str
 	f.SetActiveSheet(index)
 
 	// Заголовки
-	headers := []string{"ID", "Telegram ID", "Username", "Имя", "Фамилия", "Телефон", "Менеджер", "Черный список", "Язык", "Последняя активность", "Дата регистрации"}
+	headers := []string{
+		"ID", "Telegram ID", "Username", "Имя", "Фамилия", "Телефон",
+		"Менеджер", "Черный список", "Язык", "Последняя активность", "Дата регистрации",
+	}
 	for i, header := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		_ = f.SetCellValue("Пользователи", cell, header)

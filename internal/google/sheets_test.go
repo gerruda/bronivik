@@ -119,7 +119,7 @@ func TestPrepareDateHeaders(t *testing.T) {
 
 func TestFormatScheduleCell(t *testing.T) {
 	s := &SheetsService{}
-	item := models.Item{Name: "Camera", TotalQuantity: 2}
+	item := &models.Item{Name: "Camera", TotalQuantity: 2}
 
 	t.Run("Empty", func(t *testing.T) {
 		val, color := s.formatScheduleCell(item, nil)
@@ -174,7 +174,7 @@ func TestFormatScheduleCell(t *testing.T) {
 
 func TestPrepareItemRowData(t *testing.T) {
 	s := &SheetsService{}
-	item := models.Item{ID: 1, Name: "Camera", TotalQuantity: 2}
+	item := &models.Item{ID: 1, Name: "Camera", TotalQuantity: 2}
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	dailyBookings := map[string][]models.Booking{
 		"2025-01-01": {{ID: 1, ItemID: 1, Status: models.StatusConfirmed}},

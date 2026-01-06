@@ -186,7 +186,7 @@ func TestSetItems(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	items := []models.Item{
+	items := []*models.Item{
 		{ID: 10, Name: "SI1", TotalQuantity: 1},
 		{ID: 11, Name: "SI2", TotalQuantity: 2},
 	}

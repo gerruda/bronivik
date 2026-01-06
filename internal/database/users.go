@@ -9,8 +9,11 @@ import (
 )
 
 func (db *DB) CreateOrUpdateUser(ctx context.Context, user *models.User) error {
-	query := `INSERT INTO users (telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, language_code, last_activity, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	query := `INSERT INTO users (
+				telegram_id, username, first_name, last_name, phone, 
+				is_manager, is_blacklisted, language_code, 
+				last_activity, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(telegram_id) DO UPDATE SET
                 username = excluded.username,
                 first_name = excluded.first_name,
@@ -43,13 +46,17 @@ func (db *DB) CreateOrUpdateUser(ctx context.Context, user *models.User) error {
 }
 
 func (db *DB) GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error) {
-	query := `SELECT id, telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, language_code, last_activity, created_at, updated_at 
+	query := `SELECT id, telegram_id, username, first_name, last_name, 
+	                 phone, is_manager, is_blacklisted, language_code, 
+					 last_activity, created_at, updated_at 
               FROM users WHERE telegram_id = ?`
 	return db.queryUser(ctx, query, telegramID)
 }
 
 func (db *DB) GetUserByID(ctx context.Context, id int64) (*models.User, error) {
-	query := `SELECT id, telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, language_code, last_activity, created_at, updated_at 
+	query := `SELECT id, telegram_id, username, first_name, last_name, 
+	                 phone, is_manager, is_blacklisted, language_code, 
+					 last_activity, created_at, updated_at 
               FROM users WHERE id = ?`
 	return db.queryUser(ctx, query, id)
 }
@@ -79,7 +86,7 @@ func (db *DB) UpdateUserActivity(ctx context.Context, telegramID int64) error {
 	return err
 }
 
-func (db *DB) GetAllUsers(ctx context.Context) ([]models.User, error) {
+func (db *DB) GetAllUsers(ctx context.Context) ([]*models.User, error) {
 	query := `SELECT id, telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, language_code, last_activity, created_at, updated_at 
               FROM users ORDER BY last_activity DESC`
 	rows, err := db.QueryContext(ctx, query)
@@ -88,9 +95,9 @@ func (db *DB) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	}
 	defer rows.Close()
 
-	var users []models.User
+	var users []*models.User
 	for rows.Next() {
-		var u models.User
+		u := &models.User{}
 		err := rows.Scan(
 			&u.ID, &u.TelegramID, &u.Username, &u.FirstName, &u.LastName, &u.Phone,
 			&u.IsManager, &u.IsBlacklisted, &u.LanguageCode, &u.LastActivity, &u.CreatedAt, &u.UpdatedAt,
@@ -103,7 +110,7 @@ func (db *DB) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	return users, nil
 }
 
-func (db *DB) GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]models.User, error) {
+func (db *DB) GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]*models.User, error) {
 	query := `SELECT id, telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, language_code, last_activity, created_at, updated_at 
               FROM users WHERE is_manager = ? ORDER BY last_activity DESC`
 	rows, err := db.QueryContext(ctx, query, isManager)
@@ -112,9 +119,9 @@ func (db *DB) GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]mo
 	}
 	defer rows.Close()
 
-	var users []models.User
+	var users []*models.User
 	for rows.Next() {
-		var u models.User
+		u := &models.User{}
 		err := rows.Scan(
 			&u.ID, &u.TelegramID, &u.Username, &u.FirstName, &u.LastName, &u.Phone,
 			&u.IsManager, &u.IsBlacklisted, &u.LanguageCode, &u.LastActivity, &u.CreatedAt, &u.UpdatedAt,
@@ -127,7 +134,7 @@ func (db *DB) GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]mo
 	return users, nil
 }
 
-func (db *DB) GetActiveUsers(ctx context.Context, days int) ([]models.User, error) {
+func (db *DB) GetActiveUsers(ctx context.Context, days int) ([]*models.User, error) {
 	since := time.Now().AddDate(0, 0, -days)
 	query := `SELECT id, telegram_id, username, first_name, last_name, phone, is_manager, is_blacklisted, language_code, last_activity, created_at, updated_at 
               FROM users WHERE last_activity >= ? ORDER BY last_activity DESC`
@@ -137,9 +144,9 @@ func (db *DB) GetActiveUsers(ctx context.Context, days int) ([]models.User, erro
 	}
 	defer rows.Close()
 
-	var users []models.User
+	var users []*models.User
 	for rows.Next() {
-		var u models.User
+		u := &models.User{}
 		err := rows.Scan(
 			&u.ID, &u.TelegramID, &u.Username, &u.FirstName, &u.LastName, &u.Phone,
 			&u.IsManager, &u.IsBlacklisted, &u.LanguageCode, &u.LastActivity, &u.CreatedAt, &u.UpdatedAt,

@@ -66,18 +66,19 @@ func (b *Bot) sendMessage(chatID int64, text string) {
 }
 
 // handleMainMenu - главное меню с контактами
-func (b *Bot) handleMainMenu(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleMainMenu(ctx context.Context, update *tgbotapi.Update) {
 	var userID int64
 	var chatID int64
 
 	// Определяем userID и chatID в зависимости от типа update
-	if update.Message != nil {
+	switch {
+	case update.Message != nil:
 		userID = update.Message.From.ID
 		chatID = update.Message.Chat.ID
-	} else if update.CallbackQuery != nil {
+	case update.CallbackQuery != nil:
 		userID = update.CallbackQuery.From.ID
 		chatID = update.CallbackQuery.Message.Chat.ID
-	} else {
+	default:
 		b.logger.Error().Msg("Error: cannot determine userID and chatID in handleMainMenu")
 		return
 	}
@@ -87,36 +88,39 @@ func (b *Bot) handleMainMenu(ctx context.Context, update tgbotapi.Update) {
 	msg := tgbotapi.NewMessage(chatID,
 		"Добро пожаловать! Выберите действие:")
 
-	var rows [][]tgbotapi.KeyboardButton
+	rows := make([][]tgbotapi.KeyboardButton, 0, 5)
 
 	// Основные кнопки для всех пользователей
 	if !b.isManager(userID) {
-		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📋 СОЗДАТЬ ЗАЯВКУ"),
-		))
-		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📅 Посмотреть расписание"),
-			tgbotapi.NewKeyboardButton("💼 Ассортимент"),
-		))
-
-		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📊 Мои заявки"),
-			tgbotapi.NewKeyboardButton("📞 Контакты менеджеров"),
-		))
+		rows = append(rows,
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton(btnCreateBooking),
+			),
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton(btnViewSchedule),
+				tgbotapi.NewKeyboardButton(btnAvailableItems),
+			),
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton(btnMyBookings),
+				tgbotapi.NewKeyboardButton(btnManagerContacts),
+			),
+		)
 	}
 
 	// Кнопки только для менеджеров
 	if b.isManager(userID) {
-		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("👨‍💼 Все заявки"),
-		))
-		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("➕ Создать заявку (Менеджер)"),
-		))
-		rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("🔄 Синхронизировать список заявок (Google Sheets)"),
-			tgbotapi.NewKeyboardButton("📅 Синхронизировать расписание (Google Sheets)"),
-		))
+		rows = append(rows,
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton(btnAllBookings),
+			),
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton(btnCreateBookingManager),
+			),
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton(btnSyncBookings),
+				tgbotapi.NewKeyboardButton(btnSyncSchedule),
+			),
+		)
 	}
 
 	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(rows...)
@@ -128,7 +132,7 @@ func (b *Bot) handleMainMenu(ctx context.Context, update tgbotapi.Update) {
 }
 
 // showManagerContacts показывает контакты менеджеров
-func (b *Bot) showManagerContacts(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) showManagerContacts(_ context.Context, update *tgbotapi.Update) {
 	contacts := b.config.ManagersContacts
 	var message strings.Builder
 	message.WriteString("📞 Контакты менеджера:\n\n")
@@ -144,7 +148,7 @@ func (b *Bot) showManagerContacts(ctx context.Context, update tgbotapi.Update) {
 }
 
 // showUserBookings показывает заявки пользователя
-func (b *Bot) showUserBookings(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) showUserBookings(ctx context.Context, update *tgbotapi.Update) {
 	bookings, err := b.userService.GetUserBookings(ctx, update.Message.From.ID)
 	if err != nil {
 		b.logger.Error().Err(err).Int64("user_id", update.Message.From.ID).Msg("Error getting user bookings")
@@ -156,12 +160,12 @@ func (b *Bot) showUserBookings(ctx context.Context, update tgbotapi.Update) {
 	message.WriteString("📊 Ваши заявки (за последние 2 недели и предстоящие):\n\n")
 
 	for _, booking := range bookings {
-		statusEmoji := "⏳"
+		statusEmoji := statusPending
 		switch booking.Status {
 		case "confirmed":
-			statusEmoji = "✅"
+			statusEmoji = statusSuccess
 		case "canceled":
-			statusEmoji = "❌"
+			statusEmoji = statusError
 		case "changed":
 			statusEmoji = "🔄"
 		case "completed":
@@ -182,7 +186,7 @@ func (b *Bot) showUserBookings(ctx context.Context, update tgbotapi.Update) {
 }
 
 // Добавляем метод для запроса имени
-func (b *Bot) handleNameRequest(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleNameRequest(ctx context.Context, update *tgbotapi.Update) {
 	b.debugState(ctx, update.Message.From.ID, "handleNameRequest START")
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
@@ -190,11 +194,11 @@ func (b *Bot) handleNameRequest(ctx context.Context, update tgbotapi.Update) {
 
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📞 Контакты менеджеров"),
-			tgbotapi.NewKeyboardButton("❌ Отмена"),
+			tgbotapi.NewKeyboardButton(btnManagerContacts),
+			tgbotapi.NewKeyboardButton(btnCancel),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("⬅️ Назад"),
+			tgbotapi.NewKeyboardButton(btnBack),
 		),
 	)
 	msg.ReplyMarkup = keyboard
@@ -210,7 +214,7 @@ func (b *Bot) handleNameRequest(ctx context.Context, update tgbotapi.Update) {
 }
 
 // Обновляем handlePhoneRequest - добавляем контакты
-func (b *Bot) handlePhoneRequest(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handlePhoneRequest(ctx context.Context, update *tgbotapi.Update) {
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 		"Пожалуйста, предоставьте ваш номер телефона для связи:\n"+
 			"Вы можете предоставить разрешение на использование номера из контакта телеграмм\n"+
@@ -221,11 +225,11 @@ func (b *Bot) handlePhoneRequest(ctx context.Context, update tgbotapi.Update) {
 			tgbotapi.NewKeyboardButtonContact("📱 Отправить номер телефона из вашего контакта в телеграмм"),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📞 Контакты менеджеров"),
-			tgbotapi.NewKeyboardButton("❌ Отмена"),
+			tgbotapi.NewKeyboardButton(btnManagerContacts),
+			tgbotapi.NewKeyboardButton(btnCancel),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("⬅️ Назад"),
+			tgbotapi.NewKeyboardButton(btnBack),
 		),
 	)
 	msg.ReplyMarkup = keyboard
@@ -239,7 +243,7 @@ func (b *Bot) handlePhoneRequest(ctx context.Context, update tgbotapi.Update) {
 }
 
 // finalizeBooking обновляем для использования имени
-func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) finalizeBooking(ctx context.Context, update *tgbotapi.Update) {
 	state := b.getUserState(ctx, update.Message.From.ID)
 	if state == nil {
 		b.sendMessage(update.Message.Chat.ID, "Сессия устарела. Начните заново.")
@@ -298,7 +302,7 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 	}
 
 	// Уведомляем менеджеров
-	b.notifyManagers(booking)
+	b.notifyManagers(&booking)
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 		fmt.Sprintf("⏳ Ваша заявка #%d на позицию %s успешно создана. \nОжидайте подтверждения.", booking.ID, booking.ItemName))
@@ -312,7 +316,7 @@ func (b *Bot) finalizeBooking(ctx context.Context, update tgbotapi.Update) {
 }
 
 // handleContactReceived обработка полученного контакта
-func (b *Bot) handleContactReceived(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleContactReceived(ctx context.Context, update *tgbotapi.Update) {
 	state := b.getUserState(ctx, update.Message.From.ID)
 	if state == nil {
 		b.handleMainMenu(ctx, update)
@@ -325,7 +329,7 @@ func (b *Bot) handleContactReceived(ctx context.Context, update tgbotapi.Update)
 }
 
 // handleViewSchedule - меню просмотра расписания
-func (b *Bot) handleViewSchedule(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleViewSchedule(ctx context.Context, update *tgbotapi.Update) {
 	b.updateUserActivity(update.Message.From.ID)
 
 	// Сохраняем состояние выбора аппарата для расписания
@@ -338,8 +342,8 @@ func (b *Bot) handleViewSchedule(ctx context.Context, update tgbotapi.Update) {
 }
 
 // sendScheduleItemsPage отправляет страницу с аппаратами для просмотра расписания
-func (b *Bot) sendScheduleItemsPage(ctx context.Context, chatID int64, messageID int, page int) {
-	b.renderPaginatedItems(PaginationParams{
+func (b *Bot) sendScheduleItemsPage(ctx context.Context, chatID int64, messageID, page int) {
+	b.renderPaginatedItems(&PaginationParams{
 		Ctx:          ctx,
 		ChatID:       chatID,
 		MessageID:    messageID,
@@ -352,17 +356,18 @@ func (b *Bot) sendScheduleItemsPage(ctx context.Context, chatID int64, messageID
 	})
 }
 
-func (b *Bot) handleSelectItem(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleSelectItem(ctx context.Context, update *tgbotapi.Update) {
 	var chatID int64
 	var userID int64
 	var messageID int
 
 	// Определяем источник вызова
-	if update.Message != nil {
+	switch {
+	case update.Message != nil:
 		// Вызов из обычного сообщения
 		chatID = update.Message.Chat.ID
 		userID = update.Message.From.ID
-	} else if update.CallbackQuery != nil {
+	case update.CallbackQuery != nil:
 		// Вызов из callback
 		chatID = update.CallbackQuery.Message.Chat.ID
 		userID = update.CallbackQuery.From.ID
@@ -373,7 +378,7 @@ func (b *Bot) handleSelectItem(ctx context.Context, update tgbotapi.Update) {
 		if _, err := b.tgService.Request(callbackConfig); err != nil {
 			b.logger.Error().Err(err).Msg("Failed to answer callback query")
 		}
-	} else {
+	default:
 		b.logger.Error().Msg("Error: cannot determine chatID and userID in handleSelectItem")
 		return
 	}
@@ -391,8 +396,8 @@ func (b *Bot) handleSelectItem(ctx context.Context, update tgbotapi.Update) {
 }
 
 // sendItemsPage отправляет страницу с аппаратами
-func (b *Bot) sendItemsPage(ctx context.Context, chatID int64, messageID int, page int) {
-	b.renderPaginatedItems(PaginationParams{
+func (b *Bot) sendItemsPage(ctx context.Context, chatID int64, messageID, page int) {
+	b.renderPaginatedItems(&PaginationParams{
 		Ctx:          ctx,
 		ChatID:       chatID,
 		MessageID:    messageID,
@@ -406,7 +411,7 @@ func (b *Bot) sendItemsPage(ctx context.Context, chatID int64, messageID int, pa
 }
 
 // showAvailableItems показывает доступные позиции
-func (b *Bot) showAvailableItems(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) showAvailableItems(ctx context.Context, update *tgbotapi.Update) {
 	items, err := b.itemService.GetActiveItems(ctx)
 	if err != nil {
 		b.logger.Error().Err(err).Msg("Error getting active items")
@@ -422,10 +427,10 @@ func (b *Bot) showAvailableItems(ctx context.Context, update tgbotapi.Update) {
 		message.WriteString("\n")
 	}
 
-	var keyboard [][]tgbotapi.InlineKeyboardButton
+	keyboard := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
 
 	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardButtonData("📋 СОЗДАТЬ ЗАЯВКУ", "start_the_order"),
+		tgbotapi.NewInlineKeyboardButtonData(btnCreateBooking, "start_the_order"),
 	})
 
 	markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
@@ -439,7 +444,7 @@ func (b *Bot) showAvailableItems(ctx context.Context, update tgbotapi.Update) {
 }
 
 // showMonthScheduleForItem показывает расписание на 30 дней для выбранного аппарата
-func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) showMonthScheduleForItem(ctx context.Context, update *tgbotapi.Update) {
 	state := b.getUserState(ctx, update.Message.From.ID)
 	if state == nil || state.TempData["item_id"] == nil {
 		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не выбран")
@@ -480,10 +485,10 @@ func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Upda
 	}
 	message.WriteString("```")
 
-	var keyboard [][]tgbotapi.InlineKeyboardButton
+	keyboard := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
 
 	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardButtonData("📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ", "start_the_order_item"),
+		tgbotapi.NewInlineKeyboardButtonData(btnCreateForItem, "start_the_order_item"),
 	})
 
 	markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
@@ -497,7 +502,7 @@ func (b *Bot) showMonthScheduleForItem(ctx context.Context, update tgbotapi.Upda
 }
 
 // handleSpecificDateInput обновляем для работы с выбранным аппаратом
-func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Update, dateStr string) {
+func (b *Bot) handleSpecificDateInput(ctx context.Context, update *tgbotapi.Update, dateStr string) {
 	state := b.getUserState(ctx, update.Message.From.ID)
 	if state == nil || state.TempData["item_id"] == nil {
 		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не выбран")
@@ -515,7 +520,9 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 	if err != nil {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"Неверный формат даты. Используйте ДД.ММ.ГГГГ (например, 25.12.2024)")
-		b.tgService.Send(msg)
+		if _, errSend := b.tgService.Send(msg); errSend != nil {
+			b.logger.Error().Err(errSend).Msg("Failed to send invalid date format msg in handleSpecificDateInput")
+		}
 		return
 	}
 
@@ -547,7 +554,7 @@ func (b *Bot) handleSpecificDateInput(ctx context.Context, update tgbotapi.Updat
 }
 
 // requestSpecificDate запрашивает у пользователя конкретную дату
-func (b *Bot) requestSpecificDate(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) requestSpecificDate(ctx context.Context, update *tgbotapi.Update) {
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 		"Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
 
@@ -558,7 +565,7 @@ func (b *Bot) requestSpecificDate(ctx context.Context, update tgbotapi.Update) {
 }
 
 // handleCustomInput ...
-func (b *Bot) handleCustomInput(ctx context.Context, update tgbotapi.Update, state *models.UserState) {
+func (b *Bot) handleCustomInput(ctx context.Context, update *tgbotapi.Update, state *models.UserState) {
 	if state == nil {
 		b.sendMessage(update.Message.Chat.ID, "Неизвестная команда. Используйте меню.")
 		b.handleMainMenu(ctx, update)
@@ -569,14 +576,14 @@ func (b *Bot) handleCustomInput(ctx context.Context, update tgbotapi.Update, sta
 	userID := update.Message.From.ID
 
 	// Обработка общих кнопок "Назад" и "Отмена"
-	if text == "❌ Отмена" {
+	if text == btnCancel {
 		b.clearUserState(ctx, userID)
 		b.sendMessage(update.Message.Chat.ID, "❌ Действие отменено")
 		b.handleMainMenu(ctx, update)
 		return
 	}
 
-	if text == "⬅️ Назад" {
+	if text == btnBack {
 		switch state.CurrentStep {
 		case models.StateEnterName:
 			b.handleDateSelection(ctx, update, state.GetInt64("item_id"))
@@ -590,11 +597,8 @@ func (b *Bot) handleCustomInput(ctx context.Context, update tgbotapi.Update, sta
 		}
 	}
 
-	switch state.CurrentStep {
-	default:
-		b.sendMessage(update.Message.Chat.ID, "Неизвестная команда. Используйте меню.")
-		b.handleMainMenu(ctx, update)
-	}
+	b.sendMessage(update.Message.Chat.ID, "Неизвестная команда. Используйте меню.")
+	b.handleMainMenu(ctx, update)
 }
 
 // sanitizeInput удаляет потенциально опасные символы из ввода
@@ -617,20 +621,22 @@ func (b *Bot) sanitizeInput(input string) string {
 }
 
 // handleDateInput обрабатывает ввод даты для бронирования
-func (b *Bot) handleDateInput(ctx context.Context, update tgbotapi.Update, dateStr string, state *models.UserState) {
+func (b *Bot) handleDateInput(ctx context.Context, update *tgbotapi.Update, dateStr string, state *models.UserState) {
 	b.debugState(ctx, update.Message.From.ID, "handleDateInput START")
 
 	date, err := time.Parse("02.01.2006", dateStr)
 	if err != nil {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID,
 			"Неверный формат даты. Используйте ДД.ММ.ГГГГ (например, 25.12.2024)")
-		b.tgService.Send(msg)
+		if _, errSend := b.tgService.Send(msg); errSend != nil {
+			b.logger.Error().Err(errSend).Msg("Failed to send invalid date format msg in handleDateInput")
+		}
 		return
 	}
 
 	// Валидация даты через сервис
-if errVal := b.bookingService.ValidateBookingDate(date); errVal != nil {
-			b.sendMessage(update.Message.Chat.ID, b.getErrorMessage(errVal))
+	if errVal := b.bookingService.ValidateBookingDate(date); errVal != nil {
+		b.sendMessage(update.Message.Chat.ID, b.getErrorMessage(errVal))
 		return
 	}
 
@@ -676,7 +682,7 @@ if errVal := b.bookingService.ValidateBookingDate(date); errVal != nil {
 }
 
 // restoreStateOrRestart восстанавливает состояние или начинает заново
-func (b *Bot) restoreStateOrRestart(ctx context.Context, update tgbotapi.Update, requiredFields ...string) bool {
+func (b *Bot) restoreStateOrRestart(ctx context.Context, update *tgbotapi.Update, requiredFields ...string) bool {
 	state := b.getUserState(ctx, update.Message.From.ID)
 	if state == nil {
 		b.sendMessage(update.Message.Chat.ID, "Сессия устарела. Начните заново.")
@@ -711,7 +717,7 @@ func (b *Bot) debugState(ctx context.Context, userID int64, message string) {
 }
 
 // handlePhoneReceived обработка полученного номера телефона
-func (b *Bot) handlePhoneReceived(ctx context.Context, update tgbotapi.Update, phone string) {
+func (b *Bot) handlePhoneReceived(ctx context.Context, update *tgbotapi.Update, phone string) {
 	b.debugState(ctx, update.Message.From.ID, "handlePhoneReceived START")
 
 	// Проверяем и восстанавливаем состояние

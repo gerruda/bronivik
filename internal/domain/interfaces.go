@@ -15,30 +15,30 @@ type Repository interface {
 	CreateBookingWithLock(ctx context.Context, booking *models.Booking) error
 	UpdateBookingStatus(ctx context.Context, id int64, status string) error
 	UpdateBookingStatusWithVersion(ctx context.Context, id int64, version int64, status string) error
-	GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]models.Booking, error)
+	GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]*models.Booking, error)
 	CheckAvailability(ctx context.Context, itemID int64, date time.Time) (bool, error)
-	GetAvailabilityForPeriod(ctx context.Context, itemID int64, startDate time.Time, days int) ([]models.Availability, error)
-	GetActiveItems(ctx context.Context) ([]models.Item, error)
+	GetAvailabilityForPeriod(ctx context.Context, itemID int64, startDate time.Time, days int) ([]*models.Availability, error)
+	GetActiveItems(ctx context.Context) ([]*models.Item, error)
 	GetItemByID(ctx context.Context, id int64) (*models.Item, error)
 	GetItemByName(ctx context.Context, name string) (*models.Item, error)
 	CreateItem(ctx context.Context, item *models.Item) error
 	UpdateItem(ctx context.Context, item *models.Item) error
 	DeactivateItem(ctx context.Context, id int64) error
 	ReorderItem(ctx context.Context, id int64, newOrder int64) error
-	GetAllUsers(ctx context.Context) ([]models.User, error)
+	GetAllUsers(ctx context.Context) ([]*models.User, error)
 	GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error)
 	GetUserByID(ctx context.Context, id int64) (*models.User, error)
 	CreateOrUpdateUser(ctx context.Context, user *models.User) error
 	UpdateUserActivity(ctx context.Context, telegramID int64) error
 	UpdateUserPhone(ctx context.Context, telegramID int64, phone string) error
-	GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]models.Booking, error)
+	GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]*models.Booking, error)
 	GetBookedCount(ctx context.Context, itemID int64, date time.Time) (int, error)
 	GetBookingWithAvailability(ctx context.Context, id int64, newItemID int64) (*models.Booking, bool, error)
 	UpdateBookingItemAndStatusWithVersion(ctx context.Context, id int64, version int64, itemID int64, itemName string, status string) error
-	SetItems(items []models.Item)
-	GetActiveUsers(ctx context.Context, days int) ([]models.User, error)
-	GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]models.User, error)
-	GetUserBookings(ctx context.Context, userID int64) ([]models.Booking, error)
+	SetItems(items []*models.Item)
+	GetActiveUsers(ctx context.Context, days int) ([]*models.User, error)
+	GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]*models.User, error)
+	GetUserBookings(ctx context.Context, userID int64) ([]*models.Booking, error)
 }
 
 type StateRepository interface {
@@ -72,7 +72,7 @@ type SheetsWriter interface {
 	UpdateBookingsSheet(ctx context.Context, bookings []*models.Booking) error
 	ReplaceBookingsSheet(ctx context.Context, bookings []*models.Booking) error
 	AppendBooking(ctx context.Context, booking *models.Booking) error
-	UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]models.Booking, items []models.Item) error
+	UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error
 	UpsertBooking(ctx context.Context, booking *models.Booking) error
 	UpdateBookingStatus(ctx context.Context, bookingID int64, status string) error
 }
@@ -105,12 +105,12 @@ type BookingService interface {
 	ReopenBooking(ctx context.Context, bookingID int64, version int64, managerID int64) error
 	ChangeBookingItem(ctx context.Context, bookingID int64, version int64, newItemID int64, managerID int64) error
 	RescheduleBooking(ctx context.Context, bookingID int64, managerID int64) error
-	GetAvailability(ctx context.Context, itemID int64, startDate time.Time, days int) ([]models.Availability, error)
+	GetAvailability(ctx context.Context, itemID int64, startDate time.Time, days int) ([]*models.Availability, error)
 	CheckAvailability(ctx context.Context, itemID int64, date time.Time) (bool, error)
 	GetBookedCount(ctx context.Context, itemID int64, date time.Time) (int, error)
-	GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]models.Booking, error)
+	GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]*models.Booking, error)
 	GetBooking(ctx context.Context, id int64) (*models.Booking, error)
-	GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]models.Booking, error)
+	GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]*models.Booking, error)
 }
 
 type UserService interface {
@@ -119,15 +119,15 @@ type UserService interface {
 	SaveUser(ctx context.Context, user *models.User) error
 	UpdateUserPhone(ctx context.Context, telegramID int64, phone string) error
 	UpdateUserActivity(ctx context.Context, telegramID int64) error
-	GetAllUsers(ctx context.Context) ([]models.User, error)
-	GetActiveUsers(ctx context.Context, days int) ([]models.User, error)
-	GetManagers(ctx context.Context) ([]models.User, error)
-	GetUserBookings(ctx context.Context, userID int64) ([]models.Booking, error)
+	GetAllUsers(ctx context.Context) ([]*models.User, error)
+	GetActiveUsers(ctx context.Context, days int) ([]*models.User, error)
+	GetManagers(ctx context.Context) ([]*models.User, error)
+	GetUserBookings(ctx context.Context, userID int64) ([]*models.Booking, error)
 	GetUserByID(ctx context.Context, id int64) (*models.User, error)
 }
 
 type ItemService interface {
-	GetActiveItems(ctx context.Context) ([]models.Item, error)
+	GetActiveItems(ctx context.Context) ([]*models.Item, error)
 	GetItemByID(ctx context.Context, id int64) (*models.Item, error)
 	GetItemByName(ctx context.Context, name string) (*models.Item, error)
 	CreateItem(ctx context.Context, item *models.Item) error

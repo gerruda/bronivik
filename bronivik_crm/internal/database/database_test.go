@@ -24,7 +24,7 @@ func TestGetAvailableSlots_RespectsBookings(t *testing.T) {
 	}
 
 	cab := &models.Cabinet{Name: "Cab1", Description: ""}
-	if err := db.CreateCabinet(ctx, cab); err != nil {
+	if err = db.CreateCabinet(ctx, cab); err != nil {
 		t.Fatalf("CreateCabinet: %v", err)
 	}
 
@@ -33,7 +33,7 @@ func TestGetAvailableSlots_RespectsBookings(t *testing.T) {
 	if dow == 0 {
 		dow = 7
 	}
-	if err := db.CreateSchedule(ctx, &models.CabinetSchedule{CabinetID: cab.ID, DayOfWeek: dow, StartTime: "09:00", EndTime: "12:00", SlotDuration: 60}); err != nil {
+	if err = db.CreateSchedule(ctx, &models.CabinetSchedule{CabinetID: cab.ID, DayOfWeek: dow, StartTime: "09:00", EndTime: "12:00", SlotDuration: 60}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestGetAvailableSlots_RespectsBookings(t *testing.T) {
 		EndTime:   time.Date(2026, 1, 5, 11, 0, 0, 0, time.Local),
 		Status:    "pending",
 	}
-	if err := db.CreateHourlyBooking(ctx, bk); err != nil {
+	if err = db.CreateHourlyBooking(ctx, bk); err != nil {
 		t.Fatalf("CreateHourlyBooking: %v", err)
 	}
 
@@ -76,7 +76,7 @@ func TestCreateHourlyBookingWithChecks_BusySlot(t *testing.T) {
 	}
 
 	cab := &models.Cabinet{Name: "Cab1", Description: ""}
-	if err := db.CreateCabinet(ctx, cab); err != nil {
+	if err = db.CreateCabinet(ctx, cab); err != nil {
 		t.Fatalf("CreateCabinet: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestCreateHourlyBookingWithChecks_BusySlot(t *testing.T) {
 	if dow == 0 {
 		dow = 7
 	}
-	if err := db.CreateSchedule(ctx, &models.CabinetSchedule{CabinetID: cab.ID, DayOfWeek: dow, StartTime: "09:00", EndTime: "12:00", SlotDuration: 60}); err != nil {
+	if err = db.CreateSchedule(ctx, &models.CabinetSchedule{CabinetID: cab.ID, DayOfWeek: dow, StartTime: "09:00", EndTime: "12:00", SlotDuration: 60}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func TestCreateHourlyBookingWithChecks_BusySlot(t *testing.T) {
 		EndTime:   time.Date(2026, 1, 5, 11, 0, 0, 0, time.Local),
 		Status:    "pending",
 	}
-	if err := db.CreateHourlyBooking(ctx, busy); err != nil {
+	if err = db.CreateHourlyBooking(ctx, busy); err != nil {
 		t.Fatalf("CreateHourlyBooking: %v", err)
 	}
 
