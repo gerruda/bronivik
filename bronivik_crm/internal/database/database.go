@@ -784,8 +784,11 @@ func scanHourly(r rowScanner) (*models.HourlyBooking, error) {
 
 // ListSchedulesByCabinet returns active schedules for a cabinet.
 func (db *DB) ListSchedulesByCabinet(ctx context.Context, cabinetID int64) ([]models.CabinetSchedule, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, cabinet_id, day_of_week, start_time, end_time, slot_duration, is_active, created_at, updated_at
-        FROM cabinet_schedules WHERE cabinet_id = ? AND is_active = 1 ORDER BY day_of_week, id`, cabinetID)
+	query := `SELECT id, cabinet_id, day_of_week, start_time, end_time, 
+		slot_duration, is_active, created_at, updated_at
+		FROM cabinet_schedules WHERE cabinet_id = ? AND is_active = 1 
+		ORDER BY day_of_week, id`
+	rows, err := db.QueryContext(ctx, query, cabinetID)
 	if err != nil {
 		return nil, err
 	}

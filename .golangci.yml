@@ -16,9 +16,9 @@ linters-settings:
   goimports:
     local-prefixes: bronivik
   unused:
-    check-exported: false
+    {}
   unparam:
-    check-exported: false
+    {}
   nakedret:
     max-func-lines: 30
   prealloc:

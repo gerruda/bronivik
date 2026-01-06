@@ -61,7 +61,11 @@ func TestDB_ErrorPaths(t *testing.T) {
 		defer db2.Close()
 
 		// Insert manually to bypass cache update from CreateItem
-		_, err := db2.ExecContext(ctx, "INSERT INTO items (id, name, description, total_quantity, sort_order, is_active, created_at, updated_at) VALUES (99, 'Test Item', '', 10, 1, 1, ?, ?)", time.Now(), time.Now())
+		query := `INSERT INTO items (
+			id, name, description, total_quantity, sort_order, 
+			is_active, created_at, updated_at
+		) VALUES (99, 'Test Item', '', 10, 1, 1, ?, ?)`
+		_, err := db2.ExecContext(ctx, query, time.Now(), time.Now())
 		assert.NoError(t, err)
 
 		// This should hit DB and fill cache

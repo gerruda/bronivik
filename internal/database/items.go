@@ -271,7 +271,7 @@ func (db *DB) ReorderItem(ctx context.Context, id, newOrder int64) error {
 func (db *DB) GetItems() []*models.Item {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	var items []*models.Item
+	items := make([]*models.Item, 0, len(db.itemsCache))
 	for _, item := range db.itemsCache {
 		it := item
 		items = append(items, &it)

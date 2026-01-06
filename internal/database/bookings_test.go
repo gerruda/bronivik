@@ -49,9 +49,18 @@ func TestGetAvailabilityForPeriod(t *testing.T) {
 	// Date 2: 0 bookings (2 available)
 
 	bookings := []models.Booking{
-		{ItemID: itemID, ItemName: item.Name, Date: startDate, UserID: 1, UserName: "User 1", Phone: "123", Status: models.StatusConfirmed},
-		{ItemID: itemID, ItemName: item.Name, Date: startDate, UserID: 2, UserName: "User 2", Phone: "456", Status: models.StatusConfirmed},
-		{ItemID: itemID, ItemName: item.Name, Date: startDate.AddDate(0, 0, 1), UserID: 3, UserName: "User 3", Phone: "789", Status: models.StatusConfirmed},
+		{
+			ItemID: itemID, ItemName: item.Name, Date: startDate,
+			UserID: 1, UserName: "User 1", Phone: "123", Status: models.StatusConfirmed,
+		},
+		{
+			ItemID: itemID, ItemName: item.Name, Date: startDate,
+			UserID: 2, UserName: "User 2", Phone: "456", Status: models.StatusConfirmed,
+		},
+		{
+			ItemID: itemID, ItemName: item.Name, Date: startDate.AddDate(0, 0, 1),
+			UserID: 3, UserName: "User 3", Phone: "789", Status: models.StatusConfirmed,
+		},
 	}
 
 	for _, b := range bookings {
@@ -236,7 +245,8 @@ func TestBookingUpdateExtras(t *testing.T) {
 	})
 
 	t.Run("UpdateItemWithVersion", func(t *testing.T) {
-		// Version should have increased from previous updates (2 updates = +0 since not using WithVersion versions of update in subtests above until now)
+		// Version should have increased from previous updates
+		// (2 updates = +0 since not using WithVersion versions of update in subtests above until now)
 		// Wait, UpdateBookingComment and UpdateBookingStatus do NOT increment version in the current implementation!
 		// Only WithVersion versions increment it.
 		// Let's check GetBooking to see current version.
@@ -300,11 +310,17 @@ func TestCreateBookingWithLock_Failure(t *testing.T) {
 	require.NoError(t, err)
 
 	date := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
-	b1 := &models.Booking{ItemID: item.ID, ItemName: "Item 1", Date: date, UserID: 1, UserName: "U1", Phone: "1", Status: models.StatusConfirmed}
+	b1 := &models.Booking{
+		ItemID: item.ID, ItemName: "Item 1", Date: date,
+		UserID: 1, UserName: "U1", Phone: "1", Status: models.StatusConfirmed,
+	}
 	err = db.CreateBookingWithLock(ctx, b1)
 	require.NoError(t, err)
 
-	b2 := &models.Booking{ItemID: item.ID, ItemName: "Item 1", Date: date, UserID: 2, UserName: "U2", Phone: "2", Status: models.StatusConfirmed}
+	b2 := &models.Booking{
+		ItemID: item.ID, ItemName: "Item 1", Date: date,
+		UserID: 2, UserName: "U2", Phone: "2", Status: models.StatusConfirmed,
+	}
 	err = db.CreateBookingWithLock(ctx, b2)
 	assert.ErrorIs(t, err, ErrNotAvailable)
 }

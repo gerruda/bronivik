@@ -45,7 +45,12 @@ type SheetsClient interface {
 	UpsertBooking(context.Context, *models.Booking) error
 	DeleteBookingRow(context.Context, int64) error
 	UpdateBookingStatus(context.Context, int64, string) error
-	UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error
+	UpdateScheduleSheet(
+		ctx context.Context,
+		startDate, endDate time.Time,
+		dailyBookings map[string][]*models.Booking,
+		items []*models.Item,
+	) error
 }
 
 type SheetsWorker struct {

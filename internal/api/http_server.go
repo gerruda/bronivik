@@ -127,7 +127,7 @@ func (s *HTTPServer) handleAvailability(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *HTTPServer) parseItemName(path string, prefix string) string {
+func (s *HTTPServer) parseItemName(path, prefix string) string {
 	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}

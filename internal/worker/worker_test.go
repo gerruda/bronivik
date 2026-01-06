@@ -67,7 +67,11 @@ func TestProcessTaskRetry(t *testing.T) {
 	sheets := &fakeSheets{err: errors.New("boom")}
 	worker := NewSheetsWorker(db, sheets, nil, RetryPolicy{MaxRetries: 3, InitialDelay: time.Second}, nil)
 
-	booking := &models.Booking{ID: 2, UserID: 1, UserName: "tester", Phone: "+100", ItemID: 10, ItemName: "camera", Date: time.Now(), Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	booking := &models.Booking{
+		ID: 2, UserID: 1, UserName: "tester", Phone: "+100",
+		ItemID: 10, ItemName: "camera", Date: time.Now(),
+		Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
 
 	ctx := context.Background()
 	if err := worker.EnqueueTask(ctx, TaskUpsert, booking.ID, booking, ""); err != nil {
@@ -97,7 +101,11 @@ func TestProcessTaskFail(t *testing.T) {
 	sheets := &fakeSheets{err: errors.New("fatal")}
 	worker := NewSheetsWorker(db, sheets, nil, RetryPolicy{MaxRetries: 1}, nil)
 
-	booking := &models.Booking{ID: 3, UserID: 1, UserName: "tester", Phone: "+100", ItemID: 10, ItemName: "camera", Date: time.Now(), Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	booking := &models.Booking{
+		ID: 3, UserID: 1, UserName: "tester", Phone: "+100",
+		ItemID: 10, ItemName: "camera", Date: time.Now(),
+		Status: "pending", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
 
 	ctx := context.Background()
 	err := worker.EnqueueTask(ctx, TaskUpsert, booking.ID, booking, "")
@@ -524,7 +532,12 @@ func (f *fakeSheets) UpdateBookingStatus(ctx context.Context, id int64, status s
 	return f.err
 }
 
-func (f *fakeSheets) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error {
+func (f *fakeSheets) UpdateScheduleSheet(
+	ctx context.Context,
+	startDate, endDate time.Time,
+	dailyBookings map[string][]*models.Booking,
+	items []*models.Item,
+) error {
 	return f.err
 }
 
