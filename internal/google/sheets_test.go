@@ -2,6 +2,7 @@ package google
 
 import (
 	"bronivik/internal/models"
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -98,6 +99,7 @@ func TestCacheOperations(t *testing.T) {
 		t.Errorf("Expected cache to be cleared")
 	}
 }
+
 func TestPrepareDateHeaders(t *testing.T) {
 	s := &SheetsService{}
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -265,4 +267,117 @@ func TestGetItemNamesFormat(t *testing.T) {
 	if req.RepeatCell.Range.EndRowIndex != 6 { // 3 + 3
 		t.Errorf("Expected end row 6, got %d", req.RepeatCell.Range.EndRowIndex)
 	}
+}
+
+func TestFindBookingRow(t *testing.T) {
+	s := &SheetsService{
+		rowCache: make(map[int64]int),
+	}
+
+	t.Run("ZeroID", func(t *testing.T) {
+		_, err := s.FindBookingRow(context.Background(), 0)
+		if err == nil {
+			t.Error("Expected error for zero ID")
+		}
+	})
+
+	t.Run("CachedRow", func(t *testing.T) {
+		s.setCachedRow(123, 5)
+		row, err := s.FindBookingRow(context.Background(), 123)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if row != 5 {
+			t.Errorf("Expected row 5, got %d", row)
+		}
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		// Skip this test as it requires real Google Sheets API
+		t.Skip("Requires real Google Sheets service")
+	})
+}
+
+func TestUpsertBooking(t *testing.T) {
+	s := &SheetsService{
+		rowCache: make(map[int64]int),
+	}
+
+	t.Run("NilBooking", func(t *testing.T) {
+		err := s.UpsertBooking(context.Background(), nil)
+		if err == nil {
+			t.Error("Expected error for nil booking")
+		}
+	})
+
+	t.Run("NewBooking", func(t *testing.T) {
+		// Skip this test as it requires real Google Sheets API
+		t.Skip("Requires real Google Sheets service")
+	})
+}
+
+func TestDeleteBookingRow(t *testing.T) {
+	t.Run("NotFound", func(t *testing.T) {
+		// Skip this test as it requires real Google Sheets API
+		t.Skip("Requires real Google Sheets service")
+	})
+}
+
+func TestUpdateBookingStatus(t *testing.T) {
+	t.Run("NotFound", func(t *testing.T) {
+		// Skip this test as it requires real Google Sheets API
+		t.Skip("Requires real Google Sheets service")
+	})
+}
+
+func TestUpdateUsersSheet(t *testing.T) {
+	// Skip this test as it requires real Google Sheets API
+	t.Skip("Requires real Google Sheets service")
+}
+
+func TestUpdateBookingsSheet(t *testing.T) {
+	// Skip this test as it requires real Google Sheets API
+	t.Skip("Requires real Google Sheets service")
+}
+
+func TestReplaceBookingsSheet(t *testing.T) {
+	// Skip this test as it requires real Google Sheets API
+	t.Skip("Requires real Google Sheets service")
+}
+
+func TestUpdateScheduleSheet(t *testing.T) {
+	t.Run("InvalidDateRange", func(t *testing.T) {
+		// Skip this test as it requires real Google Sheets API
+		t.Skip("Requires real Google Sheets service")
+	})
+
+	t.Run("ValidCall", func(t *testing.T) {
+		// Skip this test as it requires real Google Sheets API
+		t.Skip("Requires real Google Sheets service")
+	})
+}
+
+func TestGetSheetIdByName(t *testing.T) {
+	// Skip this test as it requires real Google Sheets API
+	t.Skip("Requires real Google Sheets service")
+}
+
+func TestNewSimpleSheetsService(t *testing.T) {
+	// Skip this test as it requires real Google credentials
+	t.Skip("Requires real Google credentials")
+}
+
+func TestTestConnection(t *testing.T) {
+	// Skip this test as it requires real Google Sheets API
+	t.Skip("Requires real Google Sheets service")
+}
+
+func TestWarmUpCache(t *testing.T) {
+	// Skip this test as it requires real Google Sheets API
+	t.Skip("Requires real Google Sheets service")
+}
+
+func TestAppendBooking(t *testing.T) {
+	// Skip this test as it requires real Google Sheets API
+	t.Skip("Requires real Google Sheets service")
 }

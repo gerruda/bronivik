@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,8 +146,122 @@ func TestReadyz(t *testing.T) {
 	}
 }
 
+func TestAvailabilityBulk(t *testing.T) {
+	db := newTestDB(t)
+	item1 := createTestItem(t, db, "camera", 2)
+	createTestItem(t, db, "lens", 1)
+	bookingDate := time.Date(2025, 12, 1, 10, 0, 0, 0, time.UTC)
+	insertTestBooking(t, db, item1, bookingDate, "confirmed")
+
+	server := newTestHTTPServer(db)
+	ts := httptest.NewServer(server.server.Handler)
+	t.Cleanup(ts.Close)
+
+	t.Run("Success", func(t *testing.T) {
+		reqBody := `{"items":["camera","lens","unknown"],"dates":["2025-12-01"]}`
+		resp, err := http.Post(ts.URL+"/api/v1/availability/bulk", "application/json", strings.NewReader(reqBody))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("unexpected status: %d", resp.StatusCode)
+		}
+
+		var body struct {
+			Results []struct {
+				ItemName    string `json:"item_name"`
+				Date        string `json:"date"`
+				Available   bool   `json:"available"`
+				BookedCount int64  `json:"booked_count"`
+				Total       int64  `json:"total"`
+			} `json:"results"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+
+		if len(body.Results) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(body.Results))
+		}
+
+		// Check camera result
+		var cameraResult *struct {
+			ItemName    string `json:"item_name"`
+			Date        string `json:"date"`
+			Available   bool   `json:"available"`
+			BookedCount int64  `json:"booked_count"`
+			Total       int64  `json:"total"`
+		}
+		for i := range body.Results {
+			if body.Results[i].ItemName == "camera" {
+				cameraResult = &body.Results[i]
+				break
+			}
+		}
+		if cameraResult == nil {
+			t.Fatalf("camera result not found")
+		}
+		if !cameraResult.Available {
+			t.Fatalf("expected camera available")
+		}
+		if cameraResult.BookedCount != 1 {
+			t.Fatalf("expected booked_count=1 for camera, got %d", cameraResult.BookedCount)
+		}
+	})
+
+	t.Run("InvalidJSON", func(t *testing.T) {
+		resp, err := http.Post(ts.URL+"/api/v1/availability/bulk", "application/json", strings.NewReader("invalid json"))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("EmptyItems", func(t *testing.T) {
+		reqBody := `{"items":[],"dates":["2025-12-01"]}`
+		resp, err := http.Post(ts.URL+"/api/v1/availability/bulk", "application/json", strings.NewReader(reqBody))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("EmptyDates", func(t *testing.T) {
+		reqBody := `{"items":["camera"],"dates":[]}`
+		resp, err := http.Post(ts.URL+"/api/v1/availability/bulk", "application/json", strings.NewReader(reqBody))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("MethodNotAllowed", func(t *testing.T) {
+		req, _ := http.NewRequest("PUT", ts.URL+"/api/v1/availability/bulk", nil)
+		resp, _ := http.DefaultClient.Do(req)
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("expected 405, got %d", resp.StatusCode)
+		}
+	})
+}
+
 func TestAuth(t *testing.T) {
 	db := newTestDB(t)
+	createTestItem(t, db, "camera", 2)
+
 	cfg := config.APIConfig{
 		Enabled: true,
 		HTTP:    config.APIHTTPConfig{Enabled: true, Port: 0},

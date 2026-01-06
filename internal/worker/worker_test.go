@@ -130,45 +130,6 @@ func TestSheetsWorker_EnqueueSyncSchedule(t *testing.T) {
 	}
 }
 
-func TestSheetsWorker_HandleSheetTask(t *testing.T) {
-	db := newTestDB(t)
-	sheets := &fakeSheets{}
-	worker := NewSheetsWorker(db, sheets, nil, RetryPolicy{MaxRetries: 3}, nil)
-
-	ctx := context.Background()
-
-	t.Run("Upsert", func(t *testing.T) {
-		booking := &models.Booking{ID: 1, ItemName: "Test"}
-		err := worker.handleSheetTask(ctx, TaskUpsert, sheetTaskPayload{Booking: booking})
-		if err != nil {
-			t.Fatalf("handle: %v", err)
-		}
-		if sheets.upsertCalls != 1 {
-			t.Fatalf("expected 1 upsert call, got %d", sheets.upsertCalls)
-		}
-	})
-
-	t.Run("Delete", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, TaskDelete, sheetTaskPayload{BookingID: 123})
-		if err != nil {
-			t.Fatalf("handle: %v", err)
-		}
-		if sheets.deleteCalls != 1 {
-			t.Fatalf("expected 1 delete call, got %d", sheets.deleteCalls)
-		}
-	})
-
-	t.Run("UpdateStatus", func(t *testing.T) {
-		err := worker.handleSheetTask(ctx, TaskUpdateStatus, sheetTaskPayload{BookingID: 123, Status: "confirmed"})
-		if err != nil {
-			t.Fatalf("handle: %v", err)
-		}
-		if sheets.statusCalls != 1 {
-			t.Fatalf("expected 1 status call, got %d", sheets.statusCalls)
-		}
-	})
-}
-
 func TestRetryPolicyNextDelay(t *testing.T) {
 	policy := RetryPolicy{InitialDelay: time.Second, BackoffFactor: 2, MaxDelay: 5 * time.Second}
 	d1 := policy.NextDelay(1)
@@ -235,6 +196,102 @@ func TestSheetsWorker_DecodePayload(t *testing.T) {
 		_, err := worker.decodePayload(payload)
 		if err == nil {
 			t.Fatalf("expected error for invalid json")
+		}
+	})
+}
+
+func TestSheetsWorker_TryLocalQueue(t *testing.T) {
+	db := newTestDB(t)
+	sheets := &fakeSheets{}
+	worker := NewSheetsWorker(db, sheets, nil, RetryPolicy{}, nil)
+
+	t.Run("EmptyQueue", func(t *testing.T) {
+		task, ok := worker.tryLocalQueue()
+		if ok {
+			t.Fatalf("expected no task from empty queue")
+		}
+		if task.ID != 0 {
+			t.Fatalf("expected empty task")
+		}
+	})
+
+	t.Run("TaskInQueue", func(t *testing.T) {
+		expectedTask := models.SyncTask{ID: 123, TaskType: "test"}
+		worker.queue <- expectedTask
+
+		task, ok := worker.tryLocalQueue()
+		if !ok {
+			t.Fatalf("expected task from queue")
+		}
+		if task.ID != expectedTask.ID {
+			t.Fatalf("expected task ID %d, got %d", expectedTask.ID, task.ID)
+		}
+	})
+}
+
+func TestSheetsWorker_HandleSheetTask(t *testing.T) {
+	db := newTestDB(t)
+	sheets := &fakeSheets{}
+	worker := NewSheetsWorker(db, sheets, nil, RetryPolicy{MaxRetries: 3}, nil)
+
+	ctx := context.Background()
+
+	t.Run("Upsert", func(t *testing.T) {
+		booking := &models.Booking{ID: 1, ItemName: "Test"}
+		err := worker.handleSheetTask(ctx, TaskUpsert, sheetTaskPayload{Booking: booking})
+		if err != nil {
+			t.Fatalf("handle: %v", err)
+		}
+		if sheets.upsertCalls != 1 {
+			t.Fatalf("expected 1 upsert call, got %d", sheets.upsertCalls)
+		}
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		err := worker.handleSheetTask(ctx, TaskDelete, sheetTaskPayload{BookingID: 123})
+		if err != nil {
+			t.Fatalf("handle: %v", err)
+		}
+		if sheets.deleteCalls != 1 {
+			t.Fatalf("expected 1 delete call, got %d", sheets.deleteCalls)
+		}
+	})
+
+	t.Run("UpdateStatus", func(t *testing.T) {
+		err := worker.handleSheetTask(ctx, TaskUpdateStatus, sheetTaskPayload{BookingID: 123, Status: "confirmed"})
+		if err != nil {
+			t.Fatalf("handle: %v", err)
+		}
+		if sheets.statusCalls != 1 {
+			t.Fatalf("expected 1 status call, got %d", sheets.statusCalls)
+		}
+	})
+
+	t.Run("UnknownTaskType", func(t *testing.T) {
+		err := worker.handleSheetTask(ctx, "unknown", sheetTaskPayload{})
+		if err == nil {
+			t.Fatalf("expected error for unknown task type")
+		}
+	})
+
+	t.Run("UpsertMissingBooking", func(t *testing.T) {
+		err := worker.handleSheetTask(ctx, TaskUpsert, sheetTaskPayload{})
+		if err == nil {
+			t.Fatalf("expected error for missing booking")
+		}
+	})
+
+	t.Run("DeleteMissingID", func(t *testing.T) {
+		err := worker.handleSheetTask(ctx, TaskDelete, sheetTaskPayload{})
+		if err == nil {
+			t.Fatalf("expected error for missing booking ID")
+		}
+	})
+
+	t.Run("UpdateStatusMissingData", func(t *testing.T) {
+		err := worker.handleSheetTask(ctx, TaskUpdateStatus, sheetTaskPayload{})
+		if err == nil {
+			t.Fatalf("expected error for missing status data")
 		}
 	})
 }
