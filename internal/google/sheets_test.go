@@ -11,7 +11,7 @@ import (
 func TestFilterActiveBookings(t *testing.T) {
 	s := &SheetsService{}
 
-	bookings := []models.Booking{
+	bookings := []*models.Booking{
 		{ID: 1, Status: "pending"},
 		{ID: 2, Status: "confirmed"},
 		{ID: 3, Status: "canceled"},
@@ -129,7 +129,7 @@ func TestFormatScheduleCell(t *testing.T) {
 	})
 
 	t.Run("Booked", func(t *testing.T) {
-		bookings := []models.Booking{
+		bookings := []*models.Booking{
 			{ID: 1, UserName: "User 1", Phone: "111", Status: models.StatusConfirmed},
 		}
 		val, color := s.formatScheduleCell(item, bookings)
@@ -143,7 +143,7 @@ func TestFormatScheduleCell(t *testing.T) {
 	})
 
 	t.Run("FullyBooked", func(t *testing.T) {
-		bookings := []models.Booking{
+		bookings := []*models.Booking{
 			{ID: 1, UserName: "User 1", Phone: "111", Status: models.StatusConfirmed},
 			{ID: 2, UserName: "User 2", Phone: "222", Status: models.StatusConfirmed},
 		}
@@ -158,7 +158,7 @@ func TestFormatScheduleCell(t *testing.T) {
 	})
 
 	t.Run("Unconfirmed", func(t *testing.T) {
-		bookings := []models.Booking{
+		bookings := []*models.Booking{
 			{ID: 1, UserName: "User 1", Phone: "111", Status: models.StatusPending},
 		}
 		val, color := s.formatScheduleCell(item, bookings)
@@ -176,7 +176,7 @@ func TestPrepareItemRowData(t *testing.T) {
 	s := &SheetsService{}
 	item := &models.Item{ID: 1, Name: "Camera", TotalQuantity: 2}
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	dailyBookings := map[string][]models.Booking{
+	dailyBookings := map[string][]*models.Booking{
 		"2025-01-01": {{ID: 1, ItemID: 1, Status: models.StatusConfirmed}},
 	}
 

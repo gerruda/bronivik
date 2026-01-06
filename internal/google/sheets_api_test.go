@@ -230,10 +230,10 @@ func TestSheetsService_WithMockAPI(t *testing.T) {
 
 		startDate := time.Now()
 		endDate := startDate.AddDate(0, 0, 1)
-		dailyBookings := map[string][]models.Booking{
+		dailyBookings := map[string][]*models.Booking{
 			startDate.Format("2006-01-02"): {{ID: 1, ItemID: 1, Status: "confirmed"}},
 		}
-		items := []models.Item{{ID: 1, Name: "Item 1", TotalQuantity: 5}}
+		items := []*models.Item{{ID: 1, Name: "Item 1", TotalQuantity: 5}}
 
 		err := s.UpdateScheduleSheet(ctx, startDate, endDate, dailyBookings, items)
 		if err != nil {

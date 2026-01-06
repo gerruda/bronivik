@@ -14,7 +14,7 @@ import (
 func TestItemService_GetActiveItems(t *testing.T) {
 	mockRepo := new(MockRepository)
 	logger := zerolog.Nop()
-	items := []models.Item{
+	items := []*models.Item{
 		{ID: 1, Name: "Item 1"},
 		{ID: 2, Name: "Item 2"},
 	}

@@ -37,7 +37,7 @@ func setupTestBot() (*Bot, *botMocks) {
 	state := &mockStateManager{states: make(map[int64]*models.UserState)}
 	userSvc := &mockUserService{users: make(map[int64]*models.User)}
 	itemSvc := &mockItemService{
-		items: []models.Item{
+		items: []*models.Item{
 			{ID: 1, Name: "Item 1", TotalQuantity: 1, IsActive: true},
 		},
 	}
@@ -284,19 +284,19 @@ func (m *mockUserService) IsBlacklisted(userID int64) bool {
 	return false
 }
 
-func (m *mockUserService) GetManagers(ctx context.Context) ([]models.User, error) {
+func (m *mockUserService) GetManagers(ctx context.Context) ([]*models.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	managers := make([]models.User, 0, len(m.users))
+	managers := make([]*models.User, 0, len(m.users))
 	for _, u := range m.users {
 		if u.IsManager {
-			managers = append(managers, *u)
+			managers = append(managers, u)
 		}
 	}
 	return managers, nil
 }
 
-func (m *mockUserService) GetUserBookings(ctx context.Context, userID int64) ([]models.Booking, error) {
+func (m *mockUserService) GetUserBookings(ctx context.Context, userID int64) ([]*models.Booking, error) {
 	if m.ExpectedCalls != nil {
 		found := false
 		for _, call := range m.ExpectedCalls {
@@ -307,14 +307,14 @@ func (m *mockUserService) GetUserBookings(ctx context.Context, userID int64) ([]
 		}
 		if found {
 			args := m.Called(ctx, userID)
-			var res []models.Booking
+			var res []*models.Booking
 			if args.Get(0) != nil {
-				res = args.Get(0).([]models.Booking)
+				res = args.Get(0).([]*models.Booking)
 			}
 			return res, args.Error(1)
 		}
 	}
-	return []models.Booking{}, nil
+	return []*models.Booking{}, nil
 }
 
 func (m *mockUserService) GetUserByID(ctx context.Context, id int64) (*models.User, error) {
@@ -339,24 +339,24 @@ func (m *mockUserService) GetUserByID(ctx context.Context, id int64) (*models.Us
 	return nil, errors.New("not found")
 }
 
-func (m *mockUserService) GetAllUsers(ctx context.Context) ([]models.User, error) {
+func (m *mockUserService) GetAllUsers(ctx context.Context) ([]*models.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	users := make([]models.User, 0, len(m.users))
+	users := make([]*models.User, 0, len(m.users))
 	for _, u := range m.users {
-		users = append(users, *u)
+		users = append(users, u)
 	}
 	return users, nil
 }
 
-func (m *mockUserService) GetActiveUsers(ctx context.Context, days int) ([]models.User, error) {
+func (m *mockUserService) GetActiveUsers(ctx context.Context, days int) ([]*models.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var users []models.User
+	var users []*models.User
 	cutoff := time.Now().AddDate(0, 0, -days)
 	for _, u := range m.users {
 		if u.LastActivity.After(cutoff) {
-			users = append(users, *u)
+			users = append(users, u)
 		}
 	}
 	return users, nil
@@ -380,11 +380,11 @@ func (m *mockUserService) getUsers() map[int64]*models.User {
 
 type mockItemService struct {
 	domain.ItemService
-	items []models.Item
+	items []*models.Item
 	mu    sync.RWMutex
 }
 
-func (m *mockItemService) GetActiveItems(ctx context.Context) ([]models.Item, error) {
+func (m *mockItemService) GetActiveItems(ctx context.Context) ([]*models.Item, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.items, nil
@@ -395,7 +395,7 @@ func (m *mockItemService) GetItemByID(ctx context.Context, id int64) (*models.It
 	defer m.mu.RUnlock()
 	for _, item := range m.items {
 		if item.ID == id {
-			return &item, nil
+			return item, nil
 		}
 	}
 	return nil, nil
@@ -406,7 +406,7 @@ func (m *mockItemService) GetItemByName(ctx context.Context, name string) (*mode
 	defer m.mu.RUnlock()
 	for _, item := range m.items {
 		if item.Name == name {
-			return &item, nil
+			return item, nil
 		}
 	}
 	return nil, errors.New("not found")
@@ -416,7 +416,7 @@ func (m *mockItemService) CreateItem(ctx context.Context, item *models.Item) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	item.ID = int64(len(m.items) + 1)
-	m.items = append(m.items, *item)
+	m.items = append(m.items, item)
 	return nil
 }
 
@@ -425,7 +425,7 @@ func (m *mockItemService) UpdateItem(ctx context.Context, item *models.Item) err
 	defer m.mu.Unlock()
 	for i, it := range m.items {
 		if it.ID == item.ID {
-			m.items[i] = *item
+			m.items[i] = item
 			return nil
 		}
 	}
@@ -456,16 +456,16 @@ func (m *mockItemService) ReorderItem(ctx context.Context, id, order int64) erro
 	return errors.New("not found")
 }
 
-func (m *mockItemService) setItems(items []models.Item) {
+func (m *mockItemService) setItems(items []*models.Item) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.items = items
 }
 
-func (m *mockItemService) getItems() []models.Item {
+func (m *mockItemService) getItems() []*models.Item {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	cp := make([]models.Item, len(m.items))
+	cp := make([]*models.Item, len(m.items))
 	copy(cp, m.items)
 	return cp
 }
@@ -529,7 +529,7 @@ func (m *mockBookingService) ValidateBookingDate(date time.Time) error {
 	return nil
 }
 
-func (m *mockBookingService) GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]models.Booking, error) {
+func (m *mockBookingService) GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]*models.Booking, error) {
 	return nil, nil
 }
 
@@ -594,7 +594,7 @@ func (m *mockBookingService) GetBooking(ctx context.Context, id int64) (*models.
 	return m.bookings[id], nil
 }
 
-func (m *mockBookingService) GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]models.Booking, error) {
+func (m *mockBookingService) GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]*models.Booking, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -608,18 +608,18 @@ func (m *mockBookingService) GetBookingsByDateRange(ctx context.Context, start, 
 		}
 		if found {
 			args := m.Called(ctx, start, end)
-			var res []models.Booking
+			var res []*models.Booking
 			if args.Get(0) != nil {
-				res = args.Get(0).([]models.Booking)
+				res = args.Get(0).([]*models.Booking)
 			}
 			return res, args.Error(1)
 		}
 	}
 
-	var result []models.Booking
+	var result []*models.Booking
 	for _, b := range m.bookings {
 		if (b.Date.After(start) || b.Date.Equal(start)) && (b.Date.Before(end) || b.Date.Equal(end)) {
-			result = append(result, *b)
+			result = append(result, b)
 		}
 	}
 	if len(result) == 0 {
@@ -633,8 +633,8 @@ func (m *mockBookingService) GetAvailability(
 	itemID int64,
 	startDate time.Time,
 	days int,
-) ([]models.Availability, error) {
-	return []models.Availability{{Date: startDate, Available: 1}}, nil
+) ([]*models.Availability, error) {
+	return []*models.Availability{{Date: startDate, Available: 1}}, nil
 }
 
 func (m *mockBookingService) RejectBooking(ctx context.Context, bookingID, version, managerID int64) error {
@@ -673,8 +673,8 @@ func (m *mockSheetsWriter) AppendBooking(ctx context.Context, booking *models.Bo
 func (m *mockSheetsWriter) UpdateScheduleSheet(
 	ctx context.Context,
 	startDate, endDate time.Time,
-	bookings map[string][]models.Booking,
-	items []models.Item,
+	bookings map[string][]*models.Booking,
+	items []*models.Item,
 ) error {
 	return nil
 }
@@ -775,7 +775,7 @@ func TestHandleSelectItem(t *testing.T) {
 	state := &mockStateManager{states: make(map[int64]*models.UserState)}
 	userSvc := &mockUserService{}
 	itemSvc := &mockItemService{
-		items: []models.Item{
+		items: []*models.Item{
 			{ID: 1, Name: "Item 1"},
 			{ID: 2, Name: "Item 2"},
 		},
@@ -817,7 +817,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 	state := &mockStateManager{states: make(map[int64]*models.UserState)}
 	userSvc := &mockUserService{}
 	itemSvc := &mockItemService{
-		items: []models.Item{
+		items: []*models.Item{
 			{ID: 1, Name: "Item 1"},
 		},
 	}
@@ -899,7 +899,7 @@ func TestHandleCallbackQuery_ScheduleSelectItem(t *testing.T) {
 	state := &mockStateManager{states: make(map[int64]*models.UserState)}
 	userSvc := &mockUserService{}
 	itemSvc := &mockItemService{
-		items: []models.Item{{ID: 1, Name: "Item 1"}},
+		items: []*models.Item{{ID: 1, Name: "Item 1"}},
 	}
 	bookingSvc := &mockBookingService{}
 	sheetsSvc := &mockSheetsWriter{}
@@ -1010,7 +1010,7 @@ func TestHandlePhoneReceived(t *testing.T) {
 	state := &mockStateManager{states: make(map[int64]*models.UserState)}
 	userSvc := &mockUserService{users: make(map[int64]*models.User)}
 	itemSvc := &mockItemService{
-		items: []models.Item{
+		items: []*models.Item{
 			{ID: 1, Name: "Item 1"},
 		},
 	}
@@ -1171,7 +1171,7 @@ func TestHandleViewSchedule(t *testing.T) {
 	state := &mockStateManager{states: make(map[int64]*models.UserState)}
 	userSvc := &mockUserService{}
 	itemSvc := &mockItemService{
-		items: []models.Item{
+		items: []*models.Item{
 			{ID: 1, Name: "Item 1", IsActive: true},
 		},
 	}
@@ -1591,7 +1591,7 @@ func TestManagerItemsCommands(t *testing.T) {
 
 	// 2. List Items
 	mocks.tg.clearSentMessages()
-	mocks.item.setItems([]models.Item{{ID: 1, Name: "Item 1", TotalQuantity: 10, SortOrder: 1}})
+	mocks.item.setItems([]*models.Item{{ID: 1, Name: "Item 1", TotalQuantity: 10, SortOrder: 1}})
 	update.Message.Text = "/list_items"
 	b.handleListItemsCommand(ctx, &update)
 	assert.Len(t, mocks.tg.getSentMessages(), 1)
@@ -1640,7 +1640,7 @@ func TestExportToExcel(t *testing.T) {
 	endDate := startDate.AddDate(0, 0, 7)
 
 	// Mock data
-	mocks.item.setItems([]models.Item{{ID: 1, Name: "Item 1", TotalQuantity: 5}})
+	mocks.item.setItems([]*models.Item{{ID: 1, Name: "Item 1", TotalQuantity: 5}})
 	mocks.booking.setBookings(map[int64]*models.Booking{
 		1: {ID: 1, ItemID: 1, Date: startDate, Status: models.StatusConfirmed, UserName: "User 1"},
 	})
@@ -1747,17 +1747,17 @@ func TestRemindersExtended(t *testing.T) {
 
 	// Case 2: Status not for reminder
 	bookingCanceled := models.Booking{ID: 1, UserID: 1, Status: models.StatusCanceled, Date: tomorrow}
-	mocks.booking.On("GetBookingsByDateRange", ctx, tomorrow, tomorrow).Return([]models.Booking{bookingCanceled}, nil).Once()
+	mocks.booking.On("GetBookingsByDateRange", ctx, tomorrow, tomorrow).Return([]*models.Booking{&bookingCanceled}, nil).Once()
 	b.sendTomorrowReminders(ctx)
 
 	// Case 3: User service error
 	bookingPending := models.Booking{ID: 2, UserID: 1, Status: models.StatusPending, Date: tomorrow}
-	mocks.booking.On("GetBookingsByDateRange", ctx, tomorrow, tomorrow).Return([]models.Booking{bookingPending}, nil).Once()
+	mocks.booking.On("GetBookingsByDateRange", ctx, tomorrow, tomorrow).Return([]*models.Booking{&bookingPending}, nil).Once()
 	mocks.user.On("GetUserByID", ctx, int64(1)).Return(nil, errors.New("not found")).Once()
 	b.sendTomorrowReminders(ctx)
 
 	// Case 4: User without TelegramID
-	mocks.booking.On("GetBookingsByDateRange", ctx, tomorrow, tomorrow).Return([]models.Booking{bookingPending}, nil).Once()
+	mocks.booking.On("GetBookingsByDateRange", ctx, tomorrow, tomorrow).Return([]*models.Booking{&bookingPending}, nil).Once()
 	mocks.user.On("GetUserByID", ctx, int64(1)).Return(&models.User{TelegramID: 0}, nil).Once()
 	b.sendTomorrowReminders(ctx)
 }
@@ -2057,7 +2057,7 @@ func TestPagination(t *testing.T) {
 	assert.True(t, len(mocks.tg.getSentMessages()) > 0)
 
 	// Test renderPaginatedBookings
-	bookings := []models.Booking{
+	bookings := []*models.Booking{
 		{ID: 1, UserName: "User 1", ItemName: "Item 1", Date: time.Now(), Status: models.StatusConfirmed},
 		{ID: 2, UserName: "User 2", ItemName: "Item 2", Date: time.Now(), Status: models.StatusPending},
 	}

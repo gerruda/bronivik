@@ -46,9 +46,12 @@ func (m *MockRepository) UpdateBookingStatusWithVersion(ctx context.Context, id 
 	return args.Error(0)
 }
 
-func (m *MockRepository) GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]models.Booking, error) {
+func (m *MockRepository) GetBookingsByDateRange(ctx context.Context, start, end time.Time) ([]*models.Booking, error) {
 	args := m.Called(ctx, start, end)
-	return args.Get(0).([]models.Booking), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Booking), args.Error(1)
 }
 
 func (m *MockRepository) CheckAvailability(ctx context.Context, itemID int64, date time.Time) (bool, error) {
@@ -56,14 +59,20 @@ func (m *MockRepository) CheckAvailability(ctx context.Context, itemID int64, da
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *MockRepository) GetAvailabilityForPeriod(ctx context.Context, itemID int64, startDate time.Time, days int) ([]models.Availability, error) {
+func (m *MockRepository) GetAvailabilityForPeriod(ctx context.Context, itemID int64, startDate time.Time, days int) ([]*models.Availability, error) {
 	args := m.Called(ctx, itemID, startDate, days)
-	return args.Get(0).([]models.Availability), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Availability), args.Error(1)
 }
 
-func (m *MockRepository) GetActiveItems(ctx context.Context) ([]models.Item, error) {
+func (m *MockRepository) GetActiveItems(ctx context.Context) ([]*models.Item, error) {
 	args := m.Called(ctx)
-	return args.Get(0).([]models.Item), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Item), args.Error(1)
 }
 
 func (m *MockRepository) GetItemByID(ctx context.Context, id int64) (*models.Item, error) {
@@ -102,9 +111,12 @@ func (m *MockRepository) ReorderItem(ctx context.Context, id int64, newOrder int
 	return args.Error(0)
 }
 
-func (m *MockRepository) GetAllUsers(ctx context.Context) ([]models.User, error) {
+func (m *MockRepository) GetAllUsers(ctx context.Context) ([]*models.User, error) {
 	args := m.Called(ctx)
-	return args.Get(0).([]models.User), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
 }
 
 func (m *MockRepository) GetUserByTelegramID(ctx context.Context, telegramID int64) (*models.User, error) {
@@ -138,9 +150,12 @@ func (m *MockRepository) UpdateUserPhone(ctx context.Context, telegramID int64, 
 	return args.Error(0)
 }
 
-func (m *MockRepository) GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]models.Booking, error) {
+func (m *MockRepository) GetDailyBookings(ctx context.Context, start, end time.Time) (map[string][]*models.Booking, error) {
 	args := m.Called(ctx, start, end)
-	return args.Get(0).(map[string][]models.Booking), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string][]*models.Booking), args.Error(1)
 }
 
 func (m *MockRepository) GetBookedCount(ctx context.Context, itemID int64, date time.Time) (int, error) {
@@ -161,23 +176,32 @@ func (m *MockRepository) UpdateBookingItemAndStatusWithVersion(ctx context.Conte
 	return args.Error(0)
 }
 
-func (m *MockRepository) SetItems(items []models.Item) {
+func (m *MockRepository) SetItems(items []*models.Item) {
 	m.Called(items)
 }
 
-func (m *MockRepository) GetActiveUsers(ctx context.Context, days int) ([]models.User, error) {
+func (m *MockRepository) GetActiveUsers(ctx context.Context, days int) ([]*models.User, error) {
 	args := m.Called(ctx, days)
-	return args.Get(0).([]models.User), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
 }
 
-func (m *MockRepository) GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]models.User, error) {
+func (m *MockRepository) GetUsersByManagerStatus(ctx context.Context, isManager bool) ([]*models.User, error) {
 	args := m.Called(ctx, isManager)
-	return args.Get(0).([]models.User), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
 }
 
-func (m *MockRepository) GetUserBookings(ctx context.Context, userID int64) ([]models.Booking, error) {
+func (m *MockRepository) GetUserBookings(ctx context.Context, userID int64) ([]*models.Booking, error) {
 	args := m.Called(ctx, userID)
-	return args.Get(0).([]models.Booking), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Booking), args.Error(1)
 }
 
 func TestUserService_IsManager(t *testing.T) {
@@ -258,7 +282,7 @@ func TestUserService_GetAllUsers(t *testing.T) {
 	cfg := &config.Config{}
 	s := NewUserService(mockRepo, cfg, &logger)
 
-	users := []models.User{{ID: 1}, {ID: 2}}
+	users := []*models.User{{ID: 1}, {ID: 2}}
 	mockRepo.On("GetAllUsers", mock.Anything).Return(users, nil)
 
 	result, err := s.GetAllUsers(context.Background())
@@ -273,7 +297,7 @@ func TestUserService_GetActiveUsers(t *testing.T) {
 	cfg := &config.Config{}
 	s := NewUserService(mockRepo, cfg, &logger)
 
-	users := []models.User{{ID: 1}, {ID: 2}}
+	users := []*models.User{{ID: 1}, {ID: 2}}
 	mockRepo.On("GetActiveUsers", mock.Anything, 7).Return(users, nil)
 
 	result, err := s.GetActiveUsers(context.Background(), 7)
@@ -288,7 +312,7 @@ func TestUserService_GetManagers(t *testing.T) {
 	cfg := &config.Config{}
 	s := NewUserService(mockRepo, cfg, &logger)
 
-	users := []models.User{{ID: 1, IsManager: true}, {ID: 2, IsManager: true}}
+	users := []*models.User{{ID: 1, IsManager: true}, {ID: 2, IsManager: true}}
 	mockRepo.On("GetUsersByManagerStatus", mock.Anything, true).Return(users, nil)
 
 	result, err := s.GetManagers(context.Background())
@@ -303,7 +327,7 @@ func TestUserService_GetUserBookings(t *testing.T) {
 	cfg := &config.Config{}
 	s := NewUserService(mockRepo, cfg, &logger)
 
-	bookings := []models.Booking{{ID: 1}, {ID: 2}}
+	bookings := []*models.Booking{{ID: 1}, {ID: 2}}
 	mockRepo.On("GetUserBookings", mock.Anything, int64(123)).Return(bookings, nil)
 
 	result, err := s.GetUserBookings(context.Background(), 123)

@@ -522,7 +522,7 @@ func (f *fakeSheets) UpdateBookingStatus(ctx context.Context, id int64, status s
 	return f.err
 }
 
-func (f *fakeSheets) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]models.Booking, items []models.Item) error {
+func (f *fakeSheets) UpdateScheduleSheet(ctx context.Context, startDate, endDate time.Time, dailyBookings map[string][]*models.Booking, items []*models.Item) error {
 	return f.err
 }
 

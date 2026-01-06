@@ -22,7 +22,7 @@ import (
 func TestAvailabilityReflectsBookings(t *testing.T) {
 	db := newIntegrationDB(t)
 	item := createIntegrationItem(t, db, "camera", 1)
-	db.SetItems([]models.Item{item})
+	db.SetItems([]*models.Item{&item})
 
 	server := newIntegrationHTTPServer(db)
 	ts := httptest.NewServer(server.server.Handler)

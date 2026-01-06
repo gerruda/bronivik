@@ -121,19 +121,19 @@ func TestGetCellStyle(t *testing.T) {
 	f := excelize.NewFile()
 
 	// 1. No active bookings -> White style
-	style1, err := b.getCellStyle(f, []models.Booking{}, 0, 1)
+	style1, err := b.getCellStyle(f, []*models.Booking{}, 0, 1)
 	assert.NoError(t, err)
 
 	// 2. Fully booked -> Red style
-	style2, err := b.getCellStyle(f, []models.Booking{{Status: models.StatusConfirmed}}, 1, 1)
+	style2, err := b.getCellStyle(f, []*models.Booking{{Status: models.StatusConfirmed}}, 1, 1)
 	assert.NoError(t, err)
 
 	// 3. Has unconfirmed -> Yellow style
-	style3, err := b.getCellStyle(f, []models.Booking{{Status: models.StatusPending}}, 0, 1)
+	style3, err := b.getCellStyle(f, []*models.Booking{{Status: models.StatusPending}}, 0, 1)
 	assert.NoError(t, err)
 
 	// 4. All confirmed but not full -> Green style
-	style4, err := b.getCellStyle(f, []models.Booking{{Status: models.StatusConfirmed}}, 1, 5)
+	style4, err := b.getCellStyle(f, []*models.Booking{{Status: models.StatusConfirmed}}, 1, 5)
 	assert.NoError(t, err)
 
 	assert.NotEqual(t, style1, style2)
@@ -202,8 +202,8 @@ func TestUtils_More(t *testing.T) {
 
 func TestBot_HandleCallButton(t *testing.T) {
 	b, mocks := setupTestBot()
-	booking := models.Booking{ID: 123, UserName: "Tester", Phone: "+79001112233", ItemName: "Camera", Date: time.Now()}
-	mocks.booking.setBookings(map[int64]*models.Booking{123: &booking})
+	booking := &models.Booking{ID: 123, UserName: "Tester", Phone: "+79001112233", ItemName: "Camera", Date: time.Now()}
+	mocks.booking.setBookings(map[int64]*models.Booking{123: booking})
 
 	update := tgbotapi.Update{
 		CallbackQuery: &tgbotapi.CallbackQuery{
@@ -222,8 +222,8 @@ func TestBot_HandleCallButton(t *testing.T) {
 
 func TestBot_ShowUserBookings(t *testing.T) {
 	b, mocks := setupTestBot()
-	booking := models.Booking{ID: 1, UserID: 1, ItemName: "Item1", Status: "confirmed", Date: time.Now()}
-	mocks.user.setBookings([]models.Booking{booking})
+	booking := &models.Booking{ID: 1, UserID: 1, ItemName: "Item1", Status: "confirmed", Date: time.Now()}
+	mocks.user.setBookings([]*models.Booking{booking})
 
 	update := tgbotapi.Update{
 		Message: &tgbotapi.Message{
@@ -239,7 +239,7 @@ func TestBot_ShowUserBookings(t *testing.T) {
 func TestBot_BookingSummary(t *testing.T) {
 	b, mocks := setupTestBot()
 	now := time.Now()
-	bookings := []models.Booking{
+	bookings := []*models.Booking{
 		{ID: 1, Status: models.StatusConfirmed, ItemName: "Item1", Date: now},
 		{ID: 2, Status: models.StatusPending, ItemName: "Item1", Date: now},
 		{ID: 3, Status: models.StatusConfirmed, ItemName: "Item2", Date: now},
@@ -250,7 +250,7 @@ func TestBot_BookingSummary(t *testing.T) {
 	assert.Contains(t, res, "всего 3")
 }
 
-func (m *mockUserService) setBookings(bookings []models.Booking) {
+func (m *mockUserService) setBookings(bookings []*models.Booking) {
 	m.On("GetUserBookings", mock.Anything, mock.Anything).Return(bookings, nil).Maybe()
 }
 

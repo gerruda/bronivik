@@ -36,21 +36,30 @@ func (m *mockRepo) UpdateBookingStatus(ctx context.Context, id int64, s string) 
 func (m *mockRepo) UpdateBookingStatusWithVersion(ctx context.Context, id, v int64, s string) error {
 	return m.Called(ctx, id, v, s).Error(0)
 }
-func (m *mockRepo) GetBookingsByDateRange(ctx context.Context, s, e time.Time) ([]models.Booking, error) {
+func (m *mockRepo) GetBookingsByDateRange(ctx context.Context, s, e time.Time) ([]*models.Booking, error) {
 	args := m.Called(ctx, s, e)
-	return args.Get(0).([]models.Booking), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Booking), args.Error(1)
 }
 func (m *mockRepo) CheckAvailability(ctx context.Context, id int64, d time.Time) (bool, error) {
 	args := m.Called(ctx, id, d)
 	return args.Bool(0), args.Error(1)
 }
-func (m *mockRepo) GetAvailabilityForPeriod(ctx context.Context, id int64, s time.Time, d int) ([]models.Availability, error) {
+func (m *mockRepo) GetAvailabilityForPeriod(ctx context.Context, id int64, s time.Time, d int) ([]*models.Availability, error) {
 	args := m.Called(ctx, id, s, d)
-	return args.Get(0).([]models.Availability), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Availability), args.Error(1)
 }
-func (m *mockRepo) GetActiveItems(ctx context.Context) ([]models.Item, error) {
+func (m *mockRepo) GetActiveItems(ctx context.Context) ([]*models.Item, error) {
 	args := m.Called(ctx)
-	return args.Get(0).([]models.Item), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Item), args.Error(1)
 }
 func (m *mockRepo) GetItemByID(ctx context.Context, id int64) (*models.Item, error) {
 	args := m.Called(ctx, id)
@@ -78,9 +87,12 @@ func (m *mockRepo) DeactivateItem(ctx context.Context, id int64) error {
 func (m *mockRepo) ReorderItem(ctx context.Context, id, o int64) error {
 	return m.Called(ctx, id, o).Error(0)
 }
-func (m *mockRepo) GetAllUsers(ctx context.Context) ([]models.User, error) {
+func (m *mockRepo) GetAllUsers(ctx context.Context) ([]*models.User, error) {
 	args := m.Called(ctx)
-	return args.Get(0).([]models.User), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
 }
 func (m *mockRepo) GetUserByTelegramID(ctx context.Context, id int64) (*models.User, error) {
 	args := m.Called(ctx, id)
@@ -105,9 +117,12 @@ func (m *mockRepo) UpdateUserActivity(ctx context.Context, id int64) error {
 func (m *mockRepo) UpdateUserPhone(ctx context.Context, id int64, p string) error {
 	return m.Called(ctx, id, p).Error(0)
 }
-func (m *mockRepo) GetDailyBookings(ctx context.Context, s, e time.Time) (map[string][]models.Booking, error) {
+func (m *mockRepo) GetDailyBookings(ctx context.Context, s, e time.Time) (map[string][]*models.Booking, error) {
 	args := m.Called(ctx, s, e)
-	return args.Get(0).(map[string][]models.Booking), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string][]*models.Booking), args.Error(1)
 }
 func (m *mockRepo) GetBookedCount(ctx context.Context, id int64, d time.Time) (int, error) {
 	args := m.Called(ctx, id, d)
@@ -123,18 +138,27 @@ func (m *mockRepo) GetBookingWithAvailability(ctx context.Context, id, nid int64
 func (m *mockRepo) UpdateBookingItemAndStatusWithVersion(ctx context.Context, id, v, iid int64, in, s string) error {
 	return m.Called(ctx, id, v, iid, in, s).Error(0)
 }
-func (m *mockRepo) SetItems(items []models.Item) { m.Called(items) }
-func (m *mockRepo) GetActiveUsers(ctx context.Context, d int) ([]models.User, error) {
+func (m *mockRepo) SetItems(items []*models.Item) { m.Called(items) }
+func (m *mockRepo) GetActiveUsers(ctx context.Context, d int) ([]*models.User, error) {
 	args := m.Called(ctx, d)
-	return args.Get(0).([]models.User), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
 }
-func (m *mockRepo) GetUsersByManagerStatus(ctx context.Context, im bool) ([]models.User, error) {
+func (m *mockRepo) GetUsersByManagerStatus(ctx context.Context, im bool) ([]*models.User, error) {
 	args := m.Called(ctx, im)
-	return args.Get(0).([]models.User), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
 }
-func (m *mockRepo) GetUserBookings(ctx context.Context, id int64) ([]models.Booking, error) {
+func (m *mockRepo) GetUserBookings(ctx context.Context, id int64) ([]*models.Booking, error) {
 	args := m.Called(ctx, id)
-	return args.Get(0).([]models.Booking), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.Booking), args.Error(1)
 }
 
 type mockEventBus struct {
@@ -248,7 +272,7 @@ func TestBookingService(t *testing.T) {
 	t.Run("ChangeBookingItem", func(t *testing.T) {
 		oldBooking := &models.Booking{ID: 14, ItemID: 1, ItemName: "Old Item", Status: models.StatusPending}
 		newBooking := &models.Booking{ID: 14, ItemID: 2, ItemName: "New Item", Status: models.StatusChanged}
-		items := []models.Item{{ID: 2, Name: "New Item"}}
+		items := []*models.Item{{ID: 2, Name: "New Item"}}
 
 		repo.On("GetBookingWithAvailability", ctx, int64(14), int64(2)).Return(oldBooking, true, nil).Once()
 		repo.On("GetActiveItems", ctx).Return(items, nil).Once()
@@ -277,7 +301,7 @@ func TestBookingService(t *testing.T) {
 	})
 
 	t.Run("GetAvailability", func(t *testing.T) {
-		availabilities := []models.Availability{{Date: time.Now(), ItemID: 1, Booked: 2, Available: 3}}
+		availabilities := []*models.Availability{{Date: time.Now(), ItemID: 1, Booked: 2, Available: 3}}
 
 		repo.On("GetAvailabilityForPeriod", ctx, int64(1), mock.AnythingOfType("time.Time"), 7).Return(availabilities, nil).Once()
 
@@ -308,7 +332,7 @@ func TestBookingService(t *testing.T) {
 	t.Run("GetBookingsByDateRange", func(t *testing.T) {
 		start := time.Now()
 		end := start.AddDate(0, 0, 7)
-		bookings := []models.Booking{{ID: 1}, {ID: 2}}
+		bookings := []*models.Booking{{ID: 1}, {ID: 2}}
 
 		repo.On("GetBookingsByDateRange", ctx, start, end).Return(bookings, nil).Once()
 
@@ -332,7 +356,7 @@ func TestBookingService(t *testing.T) {
 	t.Run("GetDailyBookings", func(t *testing.T) {
 		start := time.Now()
 		end := start.AddDate(0, 0, 7)
-		daily := map[string][]models.Booking{"2025-01-01": {{ID: 1}}}
+		daily := map[string][]*models.Booking{"2025-01-01": {{ID: 1}}}
 
 		repo.On("GetDailyBookings", ctx, start, end).Return(daily, nil).Once()
 
