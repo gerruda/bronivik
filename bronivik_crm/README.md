@@ -1,108 +1,82 @@
 # Bronivik CRM Bot
 
-Hourly booking system for cabinets, integrated with the Bronivik Jr core service.
+Почасовое бронирование кабинетов. Интегрировано с основным сервисом [Bronivik Jr](../README.md).
 
-## Overview
+## Обзор
 
-Bronivik CRM is a specialized Telegram bot designed for managing hourly bookings of cabinets. It provides a user-friendly interface for clients to check availability and book time slots, while allowing managers to oversee the booking process.
+Bronivik CRM — это Telegram-бот для управления арендой кабинетов. Основная особенность: при бронировании времени бот синхронизируется с базой оборудования (Bronivik Jr), чтобы гарантировать, что выбранный аппарат свободен в это время.
 
-## Features
+## Функции
 
-- **Hourly Booking**: Users can book cabinets for specific hours.
-- **Availability Check**: Real-time availability checks via integration with Bronivik Jr API.
-- **Calendar Interface**: Intuitive calendar-based date selection.
-- **Manager Dashboard**: Special features for authorized managers to view and manage bookings.
-- **Caching**: Redis-based caching for API responses to improve performance.
-- **Monitoring**: Prometheus metrics and health check endpoints.
-- **Persistence**: SQLite database for storing local booking data and user states.
+- **Почасовое бронирование**: выбор временных слотов согласно расписанию кабинета.
+- **Синхронизация оборудования**: проверка доступности аппаратов через API Bronivik Jr.
+- **Календарь**: удобный выбор даты через инлайн-клавиатуру.
+- **Данные клиента**: сбор ФИО и телефона при бронировании (для CRM целей).
+- **Панель менеджера**: инлайн-кнопки для оперативного подтверждения или отклонения заявок.
+- **Кэширование**: использование Redis для ускорения проверок по API.
 
-## Architecture
+## Архитектура
 
-The bot is built as a standalone Go service that communicates with the main Bronivik Jr API.
+Бот является частью моно-репозитория и использует общие зависимости Go.
 
-- **`cmd/bot`**: Entry point of the application.
-- **`internal/api`**: HTTP client for interacting with Bronivik Jr.
-- **`internal/bot`**: Core bot logic, handlers, and state management.
-- **`internal/database`**: SQLite persistence layer.
-- **`internal/models`**: Domain models (Cabinet, Booking, User).
-- **`internal/metrics`**: Prometheus metrics implementation.
+- `internal/api`: HTTP-клиент для взаимодействия с Jr API.
+- `internal/bot`: основная логика диалогов, стейт-машина бронирования.
+- `internal/database`: хранение кабинетов, их расписания и почасовых записей (SQLite).
 
-## Configuration
+## Конфигурация (`configs/config.yaml`)
 
-Configuration is managed via a YAML file. By default, the bot looks for `configs/config.yaml`, but you can override this using the `CRM_CONFIG_PATH` environment variable.
+Основные разделы:
 
-The config file supports `${ENV_VAR}` placeholders (values are expanded from the process environment at startup).
+- `api`: URL и ключи для Bronivik Jr. По умолчанию: `http://grpc-api:8080` (внутри Docker).
+- `booking`: правила бронирования.
+  - `min_advance_minutes`: за сколько минут до начала можно создать бронь (по умолчанию 60).
+  - `max_advance_days`: на сколько дней вперед открыта запись (по умолчанию 30).
+  - `max_active_per_user`: лимит активных броней на одного пользователя.
+- `managers`: список Telegram ID, которым приходят уведомления о новых заявках.
 
-### Key Configuration Sections
+## Команды
 
-- **`telegram`**: Bot token and debug settings.
-- **`database`**: Path to the SQLite database file.
-- **`redis`**: Connection details for caching.
-- **`api`**: Base URL and API key for Bronivik Jr integration.
-- **`booking`**: Rules for bookings (min advance time, max advance days, etc.).
-- **`managers`**: List of Telegram User IDs with manager privileges.
+### Пользовательские
 
-Example configuration:
+- `/start` — приветствие.
+- `/book` — запуск процесса бронирования (Кабинет -> Аппарат -> Дата -> Время -> Данные клиента).
+- `/my_bookings` — список моих записей и их текущий статус.
+- `/cancel_booking <ID>` — отмена текущей записи.
+- `/help` — помощь.
 
-```yaml
-telegram:
-  bot_token: "YOUR_BOT_TOKEN"
-api:
-  base_url: "http://localhost:8080"
-  api_key: "${CRM_API_KEY}"
-  api_extra: "${CRM_API_EXTRA}"
-```
+### Команды менеджера
 
-## How to Run
+- `/pending` — список заявок, ожидающих решения.
+- `/today_schedule` — занятость кабинетов на сегодня.
+- `/tomorrow_schedule` — занятость на завтра.
+- `/add_cabinet <name>` — добавление нового кабинета в базу.
+- `/list_cabinets` — просмотр всех кабинетов и их ID.
+- `/set_schedule <cab_id> <day_num> <start> <end>` — настройка рабочих часов кабинета.
 
-### Local Development
+## Установка и запуск
 
-1. Ensure you have Go 1.24+ installed.
-2. Copy `configs/config.yaml` and fill in your settings.
-3. Run the bot:
+### В составе Docker Compose
+
+Рекомендуется запускать через `docker compose` из корневой директории всего проекта:
 
 ```bash
-go run cmd/bot/main.go
-```
-
-### Docker
-
-Build the image:
-
-```bash
-# Build from the repository root (shared go.mod/go.sum)
-cd ..
-docker build -f bronivik_crm/Dockerfile -t bronivik-crm .
-```
-
-Run the container:
-
-```bash
-docker run -e CRM_CONFIG_PATH=/app/configs/config.yaml -v $(pwd)/data:/app/data bronivik-crm
-```
-
-Alternatively, run everything via docker compose from the repository root:
-
-```bash
-cp .env.example .env
 docker compose up -d --build
 ```
 
-## API Integration
+### Локально
 
-Bronivik CRM integrates with Bronivik Jr via its REST API:
+```bash
+# Находясь в папке bronivik_crm
+go run cmd/bot/main.go --config=configs/config.yaml
+```
 
-- `GET /api/v1/items`: To list available cabinets.
-- `GET /api/v1/availability/{item}`: To check availability for a specific date.
-- `POST /api/v1/availability/bulk`: For bulk availability checks.
+*Примечание: для корректной работы CRM-боту требуется запущенный сервис Bronivik Jr API.*
 
-Authentication is handled via the `x-api-key` header.
+## Интеграция API
 
-If Bronivik Jr API auth is enabled, the CRM bot must send two headers:
+Бот использует REST API основного сервиса:
 
-- `x-api-key`
-- `x-api-extra`
+- `GET /api/v1/items`: получение списка аппаратов.
+- `GET /api/v1/availability/{name}?date=...`: проверка доступности.
 
-In docker compose, the default integration URL is:
-
-- `http://grpc-api:8080`
+Авторизация происходит по двум заголовкам: `X-API-Key` и `X-API-Extra`.
