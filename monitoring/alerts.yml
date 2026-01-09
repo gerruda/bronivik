@@ -1,0 +1,38 @@
+groups:
+  - name: bronivik_alerts
+    rules:
+      - alert: DatabaseDown
+        expr: up{job="bronivik"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database is down"
+          description: "The bronivik bot database is unreachable for more than 1 minute."
+
+      - alert: GoogleSheetsSyncFailures
+        expr: rate(sheets_sync_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Google Sheets sync failure rate"
+          description: "Google Sheets synchronization is failing frequently (> 10% of requests in the last 5 minutes)."
+
+      - alert: HighRateLimitViolations
+        expr: rate(bot_rate_limit_violations_total[1m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate limit violations"
+          description: "Users are hitting rate limits more than 60 times per minute."
+
+      - alert: SlowMessageProcessing
+        expr: bot_message_processing_duration_seconds{quantile="0.9"} > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow message processing"
+          description: "90% of bot messages are taking more than 2 seconds to process."

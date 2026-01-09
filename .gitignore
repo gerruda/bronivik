@@ -1,4 +1,1 @@
-/.env
-/data/bookings.db
-.idea/*
-/*.json
+.tools/

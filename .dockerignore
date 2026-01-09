@@ -1,0 +1,15 @@
+.git
+.env
+*.md
+tests/
+data/
+exports/
+*.db
+*.log
+Dockerfile
+docker-compose.yml
+.vscode/
+.idea/
+vendor/
+bin/
+obj/

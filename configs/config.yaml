@@ -62,3 +62,36 @@ google:
   credentials_file: ${GOOGLE_CREDENTIALS_FILE}
   users_spreadsheet_id: ${USERS_SPREADSHEET_ID}
   bookings_spreadsheet_id: ${BOOKINGS_SPREADSHEET_ID}
+
+bot:
+  reminder_time: "09:00"
+  pagination_size: 8
+  max_booking_days: 365
+  min_booking_advance: 0 # hours
+
+api:
+  enabled: true
+  http:
+    enabled: true
+    port: 8080
+  grpc:
+    port: 8081
+    reflection: true
+    tls:
+      enabled: false
+      cert_file: "./certs/server.crt"
+      key_file: "./certs/server.key"
+      client_ca_file: "./certs/ca.crt"
+      require_client_cert: true
+  auth:
+    enabled: true
+    header_api_key: "x-api-key"
+    header_extra: "x-api-extra"
+    api_keys:
+      - key: ${CRM_API_KEY}
+        extra: ${CRM_API_EXTRA}
+        name: "bronivik_crm"
+        permissions: ["read:availability", "read:items"]
+  rate_limit:
+    rps: 5
+    burst: 10

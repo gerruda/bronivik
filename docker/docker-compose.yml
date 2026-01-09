@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  bronivik-jr:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - BOT_TOKEN=${JR_BOT_TOKEN}
+      - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
+    volumes:
+      - jr-data:/app/data
+      - ./credentials.json:/app/credentials.json:ro
+    ports:
+      - "8081:8081"
+
+  bronivik-crm:
+    build:
+      context: ../bronivik_crm
+      dockerfile: Dockerfile
+    environment:
+      - BOT_TOKEN=${CRM_BOT_TOKEN}
+      - API_KEY=secret-key-for-crm-bot
+      - API_BASE_URL=http://bronivik-jr:8081
+    depends_on:
+      - bronivik-jr
+    volumes:
+      - crm-data:/app/data
+      - ./credentials.json:/app/credentials.json:ro
+
+volumes:
+  jr-data:
+  crm-data:

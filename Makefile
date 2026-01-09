@@ -23,3 +23,13 @@ migrate:
 # Сборка без кэша
 rebuild:
 	docker-compose build --no-cache
+
+test:
+	go test -v -race ./...
+
+test-coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out
+
+lint:
+	golangci-lint run

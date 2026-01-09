@@ -15,6 +15,7 @@ COPY . .
 
 # Собираем приложение
 RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o /go/bin/bot ./cmd/bot
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o /go/bin/api ./cmd/api
 
 # Финальный образ
 FROM alpine:latest
@@ -24,11 +25,16 @@ RUN apk --no-cache add ca-certificates tzdata sqlite-libs
 
 WORKDIR /app/
 
-# Копируем бинарник из builder
+# Копируем бинарники из builder
 COPY --from=builder /go/bin/bot .
+COPY --from=builder /go/bin/api .
 
 # Создаем папку для конфигов
 RUN mkdir /configs
+
+# Добавляем HEALTHCHECK
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD wget --spider http://localhost:8080/healthz || exit 1
 
 # Указываем команду запуска
 CMD ["./bot"]

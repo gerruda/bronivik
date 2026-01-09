@@ -1,67 +1,70 @@
 package service
 
-// import (
-// 	"context"
-// 	"log"
-//
-// 	"mega-trainer-go/internal/domain"
-// )
-//
-// type StateService struct {
-// 	stateRepo domain.StateRepository
-// }
-//
-// func NewStateService(stateRepo domain.StateRepository) *StateService {
-// 	return &StateService{
-// 		stateRepo: stateRepo,
-// 	}
-// }
-//
-// func (s *StateService) GetUserState(ctx context.Context, userID int64) (*domain.UserState, error) {
-// 	log.Printf("Getting state for user %d", userID)
-//
-// 	state, err := s.stateRepo.GetState(ctx, userID)
-// 	if err != nil {
-// 		log.Printf("Error getting state for user %d: %v", userID, err)
-// 		return nil, err
-// 	}
-//
-// 	if state == nil {
-// 		log.Printf("No state found for user %d", userID)
-// 	} else {
-// 		log.Printf("Found state for user %d: command=%s, step=%d", userID, state.Command, state.Step)
-// 	}
-//
-// 	return state, nil
-// }
-//
-// func (s *StateService) SetUserState(ctx context.Context, userID int64, command string, step int, data map[string]string) error {
-// 	state := &domain.UserState{
-// 		UserID:  userID,
-// 		Command: command,
-// 		Step:    step,
-// 		Data:    data,
-// 	}
-// 	return s.stateRepo.SetState(ctx, state)
-// }
-//
-// func (s *StateService) ClearUserState(ctx context.Context, userID int64) error {
-// 	return s.stateRepo.ClearState(ctx, userID)
-// }
-//
-// func (s *StateService) UpdateUserStateData(ctx context.Context, userID int64, key, value string) error {
-// 	state, err := s.stateRepo.GetState(ctx, userID)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if state == nil {
-// 		return nil
-// 	}
-//
-// 	if state.Data == nil {
-// 		state.Data = make(map[string]string)
-// 	}
-// 	state.Data[key] = value
-//
-// 	return s.stateRepo.SetState(ctx, state)
-// }
+import (
+	"context"
+	"time"
+
+	"bronivik/internal/domain"
+	"bronivik/internal/models"
+
+	"github.com/rs/zerolog"
+)
+
+type StateService struct {
+	stateRepo domain.StateRepository
+	logger    *zerolog.Logger
+}
+
+func NewStateService(stateRepo domain.StateRepository, logger *zerolog.Logger) *StateService {
+	return &StateService{
+		stateRepo: stateRepo,
+		logger:    logger,
+	}
+}
+
+func (s *StateService) GetUserState(ctx context.Context, userID int64) (*models.UserState, error) {
+	state, err := s.stateRepo.GetState(ctx, userID)
+	if err != nil {
+		s.logger.Error().Err(err).Int64("user_id", userID).Msg("failed to get user state")
+		return nil, err
+	}
+
+	return state, nil
+}
+
+func (s *StateService) SetUserState(ctx context.Context, userID int64, step string, data map[string]interface{}) error {
+	state := &models.UserState{
+		UserID:      userID,
+		CurrentStep: step,
+		TempData:    data,
+	}
+	return s.stateRepo.SetState(ctx, state)
+}
+
+func (s *StateService) ClearUserState(ctx context.Context, userID int64) error {
+	return s.stateRepo.ClearState(ctx, userID)
+}
+
+func (s *StateService) UpdateUserStateData(ctx context.Context, userID int64, key string, value interface{}) error {
+	state, err := s.stateRepo.GetState(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		state = &models.UserState{
+			UserID:   userID,
+			TempData: make(map[string]interface{}),
+		}
+	}
+
+	if state.TempData == nil {
+		state.TempData = make(map[string]interface{})
+	}
+	state.TempData[key] = value
+
+	return s.stateRepo.SetState(ctx, state)
+}
+
+func (s *StateService) CheckRateLimit(ctx context.Context, userID int64, limit int, window time.Duration) (bool, error) {
+	return s.stateRepo.CheckRateLimit(ctx, userID, limit, window)
+}

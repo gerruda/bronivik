@@ -31,7 +31,7 @@ items:
     name: "УФ СЕРЕБРИСТЫЙ"
     description: ""
     total_quantity: 1
-  - id: 8
+  - id: 52
     name: "УФ СИНИЙ"
     description: ""
     total_quantity: 1
@@ -59,11 +59,11 @@ items:
     name: "УФ ЧЕРНЫЙ"
     description: ""
     total_quantity: 1
-  - id: 14
+  - id: 53
     name: "УФ ЗЕЛЕНЫЙ"
     description: ""
     total_quantity: 1
-  - id: 14
+  - id: 54
     name: "MPT"
     description: ""
     total_quantity: 1
@@ -75,7 +75,7 @@ items:
     name: "Скарлет белый"
     description: ""
     total_quantity: 1
-  - id: 16
+  - id: 55
     name: "Скарлет белый мамонтенок"
     description: ""
     total_quantity: 1
@@ -199,7 +199,7 @@ items:
     name: "Accent"
     description: ""
     total_quantity: 3
-  - id: 46
+  - id: 56
     name: "Accent Prime (UniBody, UniL)"
     description: ""
     total_quantity: 1

@@ -1,12 +1,11 @@
-version: '3.8'
-
 services:
   telegram-bot:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: booking-bot
-    restart: "on-failure"  # Измените на "no" для диагностики
+    restart: "on-failure"
+    command: ["./bot"]
     env_file:
       - .env
     environment:
@@ -21,3 +20,70 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  grpc-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: booking-api
+    restart: "on-failure"
+    command: ["./api"]
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "9090:9090"
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+    volumes:
+      - ./configs:/app/configs
+      - .env:/app/.env
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./certs:/app/certs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: booking-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+
+  crm-bot:
+    build:
+      context: .
+      dockerfile: bronivik_crm/Dockerfile
+    container_name: bronivik-crm-bot
+    restart: "on-failure"
+    depends_on:
+      - grpc-api
+      - redis
+    command: ["./bronivik-crm", "--config=configs/config.yaml"]
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+      - CRM_CONFIG_PATH=/app/configs/config.yaml
+    volumes:
+      - ./bronivik_crm/configs:/app/configs
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8090:8090"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis_data:

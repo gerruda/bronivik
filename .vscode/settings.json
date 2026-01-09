@@ -1,0 +1,7 @@
+{
+    "go.alternateTools": {
+        "go": "/home/borm/VibeCoding/bronivik_jr/.tools/go/bin/go"
+    },
+    "go.goroot": "/home/borm/VibeCoding/bronivik_jr/.tools/go",
+    "go.gopath": "/home/borm/go"
+}

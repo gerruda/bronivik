@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package bronivik.availability.v1;
+
+option go_package = "bronivik/internal/api/gen/availability/v1;availabilityv1";
+
+// AvailabilityService provides methods to check equipment availability
+// and retrieve item information for the booking system.
+service AvailabilityService {
+  // GetAvailability checks availability for a single item on a specific date.
+  // The date must be in YYYY-MM-DD format.
+  rpc GetAvailability(GetAvailabilityRequest) returns (GetAvailabilityResponse);
+
+  // GetAvailabilityBulk performs a mass availability check for multiple items and dates.
+  // Useful for calendar views or multi-item booking scenarios.
+  rpc GetAvailabilityBulk(GetAvailabilityBulkRequest) returns (GetAvailabilityBulkResponse);
+
+  // ListItems returns a list of all active items (equipment) in the system
+  // along with their total quantities.
+  rpc ListItems(ListItemsRequest) returns (ListItemsResponse);
+}
+
+// GetAvailabilityRequest is the request for a single item availability check.
+message GetAvailabilityRequest {
+  // The unique name of the item (e.g., "Laser").
+  string item_name = 1;
+  // The date to check in YYYY-MM-DD format.
+  string date = 2;
+}
+
+// GetAvailabilityResponse contains the availability status for the requested item and date.
+message GetAvailabilityResponse {
+  string item_name = 1;
+  string date = 2;
+  // True if at least one unit is available for booking.
+  bool available = 3;
+  // Number of units already booked for this date.
+  int64 booked_count = 4;
+  // Total number of units available in the system.
+  int64 total = 5;
+}
+
+// GetAvailabilityBulkRequest is the request for multiple items and dates.
+message GetAvailabilityBulkRequest {
+  // List of item names to check.
+  repeated string items = 1;
+  // List of dates to check in YYYY-MM-DD format.
+  repeated string dates = 2;
+}
+
+// Availability represents the status of a single item on a specific date.
+message Availability {
+  string item_name = 1;
+  string date = 2;
+  bool available = 3;
+  int64 booked_count = 4;
+  int64 total = 5;
+}
+
+// GetAvailabilityBulkResponse contains the results of the bulk check.
+message GetAvailabilityBulkResponse {
+  // List of availability statuses for each item/date combination.
+  repeated Availability results = 1;
+}
+
+// ListItemsRequest is an empty request to list all items.
+message ListItemsRequest {}
+
+// Item represents a piece of equipment available for booking.
+message Item {
+  // Unique identifier for the item.
+  int64 id = 1;
+  // Display name of the item.
+  string name = 2;
+  // Total number of units available in the system.
+  int64 total_quantity = 3;
+}
+
+// ListItemsResponse contains the list of all active items.
+message ListItemsResponse {
+  repeated Item items = 1;
+}

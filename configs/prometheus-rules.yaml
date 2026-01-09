@@ -1,0 +1,29 @@
+groups:
+  - name: bronivik_jr_availability
+    rules:
+      - alert: APIUnavailable
+        expr: up{job="bronivik_jr_api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "bronivik_jr API is down"
+          description: "Prometheus target job=bronivik_jr_api has been unreachable for over 1 minute."
+
+      - alert: MetricsEndpointMissing
+        expr: absent(up{job="bronivik_jr_api"})
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Metrics target missing"
+          description: "Prometheus does not see any targets for job=bronivik_jr_api; check scrape config or service discovery."
+
+      - alert: MetricsServerErrorRate
+        expr: increase(http_requests_total{endpoint=~"availability|availability_bulk|items"}[5m]) > 0 and on() rate(http_requests_total{endpoint=~"availability|availability_bulk|items"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated traffic observed"
+          description: "Sustained request volume detected on API endpoints. Tune thresholds as needed."
