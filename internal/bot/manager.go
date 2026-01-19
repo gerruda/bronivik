@@ -628,14 +628,14 @@ func (b *Bot) showManagerBookingDetail(update tgbotapi.Update, bookingID int64) 
 	// Создаем инлайн-клавиатуру для управления заявкой
 	var rows [][]tgbotapi.InlineKeyboardButton
 
-	if booking.Status == "pending" || booking.Status == "changed" {
+	if booking.Status == "pending" || booking.Status == "changed" || booking.Status == "rescheduled" {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Подтвердить", fmt.Sprintf("confirm_%d", booking.ID)),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отклонить", fmt.Sprintf("reject_%d", booking.ID)),
 		))
 	}
 
-	if booking.Status == "confirmed" {
+	if booking.Status == "confirmed" || booking.Status == "cancelled" {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Вернуть в работу", fmt.Sprintf("reopen_%d", booking.ID)),
 			tgbotapi.NewInlineKeyboardButtonData("🏁 Завершить", fmt.Sprintf("complete_%d", booking.ID)),
