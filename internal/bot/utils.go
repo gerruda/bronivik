@@ -209,7 +209,7 @@ func (b *Bot) handleNameRequest(update tgbotapi.Update) {
 	b.debugState(update.Message.From.ID, "handleNameRequest START")
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-		"Пожалуйста, введите ваше ФИО для заявки:")
+		"Пожалуйста, введите ваше ООО/ИП/ФИО по договору для заявки:")
 
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
