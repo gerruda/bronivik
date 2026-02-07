@@ -613,6 +613,7 @@ func (b *Bot) showMonthScheduleForItem(update tgbotapi.Update) {
 // handleSpecificDateInput обновляем для работы с выбранным аппаратом
 func (b *Bot) handleSpecificDateInput(update tgbotapi.Update, dateStr string) {
 	state := b.getUserState(update.Message.From.ID)
+	log.Println(state, " handleSpecificDateInput")
 	if state == nil || state.TempData["selected_item"] == nil {
 		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не выбран")
 		return
