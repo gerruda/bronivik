@@ -371,6 +371,8 @@ func (b *Bot) handleScheduleItemSelection(update tgbotapi.Update) {
 	callback := update.CallbackQuery
 	data := callback.Data
 
+	b.debugState(callback.Message.Chat.ID, "DEBUG: handleScheduleItemSelection START")
+
 	itemIDStr := strings.TrimPrefix(data, "schedule_select_item:")
 	itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
 	if err != nil {
