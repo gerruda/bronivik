@@ -613,7 +613,7 @@ func (b *Bot) showMonthScheduleForItem(update tgbotapi.Update) {
 // handleSpecificDateInput обновляем для работы с выбранным аппаратом
 func (b *Bot) handleSpecificDateInput(update tgbotapi.Update, dateStr string) {
 	state := b.getUserState(update.Message.From.ID)
-	b.debugState(update.Message.From.ID, "handleSpecificDateInput START")
+	b.debugState(update.Message.From.ID, "DEBUG: handleSpecificDateInput START")
 
 	if state == nil || state.TempData["selected_item"] == nil {
 		b.sendMessage(update.Message.Chat.ID, "Ошибка: аппарат не выбран")
@@ -661,7 +661,9 @@ func (b *Bot) requestSpecificDate(update tgbotapi.Update) {
 		"Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
 	b.debugState(update.Message.Chat.ID, "DEBUG: requestSpecificDate START")
 
-	b.setUserState(update.Message.From.ID, "waiting_specific_date", nil)
+	state := b.getUserState(update.Message.From.ID)
+
+	b.setUserState(update.Message.From.ID, "waiting_specific_date", state.TempData)
 	b.bot.Send(msg)
 }
 
