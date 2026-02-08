@@ -423,7 +423,7 @@ func (b *Bot) sendScheduleMenu(chatID, userID int64) {
 	selectedItem := state.TempData["selected_item"].(models.Item)
 
 	msg := tgbotapi.NewMessage(chatID,
-		fmt.Sprintf("📅 *Расписание для %s*\n\nВыберите период:", selectedItem.Name))
+		fmt.Sprintf("📅 *Расписание для %s*\n\nВыберите период, используя клавиатуру ниже:", selectedItem.Name))
 
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
