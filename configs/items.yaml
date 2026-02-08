@@ -124,11 +124,11 @@ items:
     description: ""
     total_quantity: 1
     order: 25
-  - id: 25
-    name: "Fraxel"
-    description: ""
-    total_quantity: 1
-    order: 26
+#  - id: 25
+#    name: "Fraxel"
+#    description: ""
+#    total_quantity: 1
+#    order: 26
   - id: 26
     name: "Alma Accent XL"
     description: ""
@@ -174,13 +174,18 @@ items:
     description: ""
     total_quantity: 1
     order: 34
-  - id: 35
-    name: "BBL Mjoule"
-    description: ""
-    total_quantity: 1
-    order: 2
+#  - id: 35
+#    name: "BBL Mjoule"
+#    description: ""
+#    total_quantity: 1
+#    order: 2
   - id: 36
     name: "ICOONE"
     description: ""
     total_quantity: 1
     order: 35
+  - id: 37
+    name: "Fraxel"
+    description: ""
+    total_quantity: 1
+    order: 26
