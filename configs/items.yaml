@@ -34,11 +34,11 @@ items:
     description: ""
     total_quantity: 1
     order: 8
-  - id: 8
-    name: "Scarlet"
-    description: ""
-    total_quantity: 1
-    order: 9
+#  - id: 8
+#    name: "Scarlet"
+#    description: ""
+#    total_quantity: 1
+#    order: 9
   - id: 9
     name: "Volnewmer"
     description: ""
