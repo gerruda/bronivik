@@ -2,7 +2,7 @@ items:
   - id: 1
     name: "BBL S"
     description: ""
-    total_quantity: 1
+    total_quantity: 2
     order: 1
   - id: 2
     name: "Ultraformer MPT"
