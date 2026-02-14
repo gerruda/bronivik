@@ -600,6 +600,7 @@ func (b *Bot) showMonthScheduleForItem(update tgbotapi.Update) {
 
 	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
 		tgbotapi.NewInlineKeyboardButtonData("📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ", "start_the_order_item"),
+		tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад в меню", "back_to_main_from_schedule"),
 	})
 
 	markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
@@ -650,7 +651,17 @@ func (b *Bot) handleSpecificDateInput(update tgbotapi.Update, dateStr string) {
 		booked,
 		selectedItem.TotalQuantity)
 
+	var keyboard [][]tgbotapi.InlineKeyboardButton
+
+	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("📋 СОЗДАТЬ ЗАЯВКУ НА ЭТОТ АППАРАТ", "start_the_order_item"),
+		tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад в меню", "back_to_main_from_schedule"),
+	})
+
+	markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
+	msg.ReplyMarkup = &markup
 	msg.ParseMode = "Markdown"
 	b.bot.Send(msg)
 }
